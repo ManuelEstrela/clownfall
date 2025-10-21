@@ -1,0 +1,14 @@
+[gd_scene load_steps=3 format=3 uid="uid://b5tnj8ghsnk7m"]
+
+[ext_resource type="Script" uid="uid://c3hmu464s7ks0" path="res://scripts/clown_ball.gd" id="1_a73s4"]
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_7xyaj"]
+radius = 17.5
+
+[node name="ClownBall" type="RigidBody2D"]
+script = ExtResource("1_a73s4")
+
+[node name="Sprite" type="Sprite2D" parent="."]
+
+[node name="Collision" type="CollisionShape2D" parent="."]
+shape = SubResource("CircleShape2D_7xyaj")

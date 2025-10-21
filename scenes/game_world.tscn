@@ -1,0 +1,41 @@
+[gd_scene load_steps=7 format=3 uid="uid://bpabai10hly68"]
+
+[ext_resource type="Texture2D" uid="uid://bskmjqpsooawm" path="res://assets/images/container.png" id="1_0biqy"]
+[ext_resource type="Script" uid="uid://dfsfcewdndt8m" path="res://scripts/game_manager.gd" id="1_47u71"]
+[ext_resource type="PackedScene" uid="uid://b6cgppxwy3dfv" path="res://ui/game_ui.tscn" id="3_ywgp6"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_47u71"]
+size = Vector2(39, 944)
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_ywgp6"]
+size = Vector2(35, 944)
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_0vfqx"]
+size = Vector2(1036, 70)
+
+[node name="GameWorld" type="Node2D"]
+script = ExtResource("1_47u71")
+
+[node name="Container" type="Sprite2D" parent="."]
+position = Vector2(960, 540)
+scale = Vector2(0.8, 0.8)
+texture = ExtResource("1_0biqy")
+
+[node name="Walls" type="CollisionShape2D" parent="."]
+
+[node name="LeftWall" type="CollisionShape2D" parent="Walls"]
+position = Vector2(568, 661)
+shape = SubResource("RectangleShape2D_47u71")
+
+[node name="RightWall" type="CollisionShape2D" parent="Walls"]
+position = Vector2(1356, 664)
+shape = SubResource("RectangleShape2D_ywgp6")
+
+[node name="Floor" type="CollisionShape2D" parent="Walls"]
+position = Vector2(967, 1025)
+shape = SubResource("RectangleShape2D_0vfqx")
+
+[node name="GameUI" parent="." instance=ExtResource("3_ywgp6")]
+
+[connection signal="game_over_triggered" from="." to="GameUI" method="show_game_over"]
+[connection signal="score_changed" from="." to="GameUI" method="update_score"]
