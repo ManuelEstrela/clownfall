@@ -14,6 +14,7 @@ var next_clown_type: int = 0
 # Preview clown
 var preview_clown = null
 var van_sprite: Sprite2D = null
+var background_sprite: Sprite2D = null
 
 # Boundaries (calculated dynamically)
 var play_area_left: float
@@ -37,53 +38,105 @@ func _ready():
 	container_center_x = viewport_size.x / 2.0
 	container_center_y = viewport_size.y / 2.0
 	
+	# Add background first (behind everything)
+	background_sprite = Sprite2D.new()
+	background_sprite.texture = load("res://assets/images/gameplay_background.png")
+	background_sprite.z_index = -100
+	add_child(background_sprite)
+	background_sprite.position = Vector2(container_center_x, container_center_y)
+	# Scale background to cover entire viewport
+	var bg_scale_x = viewport_size.x / background_sprite.texture.get_width()
+	var bg_scale_y = viewport_size.y / background_sprite.texture.get_height()
+	var bg_scale = max(bg_scale_x, bg_scale_y)  # Use max to cover entire screen
+	background_sprite.scale = Vector2(bg_scale, bg_scale)
+	
 	# Update Container sprite position and scale to match viewport
 	var container = $Container
 	container.position = Vector2(container_center_x, container_center_y)
+	container.z_index = 0  # Make sure container is above background
 	
 	# Scale container to fit viewport height (with some padding)
 	# Original container image is 1024x1536
+	var original_width = 1024.0
 	var original_height = 1536.0
-	var target_height = viewport_size.y * 0.85  # Use 85% of viewport height
+	var target_height = viewport_size.y * 0.95  # Use 95% of viewport height
 	var container_scale = target_height / original_height
 	container.scale = Vector2(container_scale, container_scale)
 	
 	# Calculate scaled dimensions
-	var container_half_width = (1024.0 * container_scale) / 2.0
-	var container_half_height = (1536.0 * container_scale) / 2.0
-	var wall_thickness = 20.0
+	var scaled_width = original_width * container_scale
+	var scaled_height = original_height * container_scale
+	var container_half_width = scaled_width / 2.0
+	var container_half_height = scaled_height / 2.0
 	
-	# Calculate boundaries with some padding
-	play_area_left = container_center_x - container_half_width + wall_thickness + 20
-	play_area_right = container_center_x + container_half_width - wall_thickness - 20
-	drop_y = container_center_y - container_half_height + 100
-	danger_y = container_center_y - container_half_height + 120
+	# Wall thickness and padding
+	var wall_thickness = 40.0 * container_scale  # Scale wall thickness with container
+	var side_padding = 25.0 * container_scale
+	var top_padding = 120.0 * container_scale  # Moved down from 80
 	
-	# Update wall positions to match container
-	# Your scene has 3 separate StaticBody2D nodes
-	var left_wall_body = $Walls/StaticBody2D
-	var right_wall_body = $Walls/StaticBody2D2
-	var floor_body = $Walls/StaticBody2D3
+	# Calculate boundaries
+	play_area_left = container_center_x - container_half_width + side_padding
+	play_area_right = container_center_x + container_half_width - side_padding
+	drop_y = container_center_y - container_half_height + top_padding
+	danger_y = drop_y + 40
 	
-	# Position the StaticBody2D nodes relative to container center
-	left_wall_body.position = Vector2(container_center_x - container_half_width + 19.5, container_center_y + 121)
-	right_wall_body.position = Vector2(container_center_x + container_half_width - 17.5, container_center_y + 124)
-	floor_body.position = Vector2(container_center_x + 7, container_center_y + container_half_height + 35)
+	# Get wall bodies - they're under Walls node
+	var left_wall_collision = $Walls/StaticBody2D/LeftWall
+	var floor_collision = $Walls/StaticBody2D2/Floor
+	var right_wall_collision = $Walls/StaticBody2D3/RightWall
 	
+	# Create and configure wall shapes
+	# Left Wall
+	var left_shape = RectangleShape2D.new()
+	left_shape.size = Vector2(wall_thickness, scaled_height)
+	left_wall_collision.shape = left_shape
+	left_wall_collision.position = Vector2(
+		container_center_x - container_half_width + wall_thickness/2,
+		container_center_y
+	)
+	
+	# Right Wall  
+	var right_shape = RectangleShape2D.new()
+	right_shape.size = Vector2(wall_thickness, scaled_height)
+	right_wall_collision.shape = right_shape
+	right_wall_collision.position = Vector2(
+		container_center_x + container_half_width - wall_thickness/2,
+		container_center_y
+	)
+	
+	# Floor - position it at the visual bottom of the container
+	var floor_shape = RectangleShape2D.new()
+	floor_shape.size = Vector2(scaled_width - (side_padding * 2), wall_thickness)
+	floor_collision.shape = floor_shape
+	# The container visual bottom needs to account for the thick wooden base
+	# Looking at the container image, the play area ends around 100-120px from the bottom
+	var container_floor_offset = 200.0 * container_scale
+	floor_collision.position = Vector2(
+		container_center_x,
+		container_center_y + container_half_height - container_floor_offset
+	)
+	
+	print("=== Game Setup ===")
 	print("Viewport size: ", viewport_size)
-	print("Container center: ", container_center_x, ", ", container_center_y)
-	print("Play area: ", play_area_left, " to ", play_area_right)
+	print("Container center: (", container_center_x, ", ", container_center_y, ")")
+	print("Container scale: ", container_scale)
+	print("Container size: ", scaled_width, " x ", scaled_height)
+	print("Play area X: ", play_area_left, " to ", play_area_right)
 	print("Drop Y: ", drop_y)
+	print("Danger Y: ", danger_y)
+	print("Left wall X: ", left_wall_collision.position.x)
+	print("Right wall X: ", right_wall_collision.position.x)
+	print("Floor Y: ", floor_collision.position.y)
 	
 	# Initialize clown types
 	current_clown_type = randi() % 5
 	next_clown_type = randi() % 5
 	update_next_preview()
 	
-	# Create van sprite first
+	# Create van sprite
 	van_sprite = Sprite2D.new()
 	van_sprite.texture = load("res://assets/images/van.png")
-	van_sprite.scale = Vector2(0.6, 0.6)
+	van_sprite.scale = Vector2(0.6, 0.6) * container_scale  # Scale van with container
 	van_sprite.z_index = 100
 	add_child(van_sprite)
 	van_sprite.global_position = Vector2(container_center_x, drop_y - 44)

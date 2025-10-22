@@ -40,6 +40,8 @@ func setup(type: int):
 	
 	# Set sprite
 	sprite.texture = load(data.image)
+	# Use LINEAR filtering for smooth scaling (better quality)
+	sprite.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
 	sprite.scale = Vector2.ONE * (clown_size / sprite.texture.get_width())
 	
 	# Set collision
