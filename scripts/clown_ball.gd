@@ -6,7 +6,7 @@ var clown_type: int = 0
 var clown_size: float = 35.0
 var clown_score: int = 1
 var can_merge: bool = true
-var danger_timer: float = 0.0
+var is_merging: bool = false
 
 # References
 @onready var sprite: Sprite2D = $Sprite
@@ -53,22 +53,48 @@ func setup(type: int):
 	physics_material_override.bounce = 0.4
 	linear_damp = 0.1
 	angular_damp = 1.0
+	
+	# Set collision layer and mask
+	collision_layer = 1
+	collision_mask = 1
 
 func _ready():
 	body_entered.connect(_on_body_entered)
+	# Enable contact monitoring
+	contact_monitor = true
+	max_contacts_reported = 4
 
 func _on_body_entered(body):
-	if body is ClownBall and can_merge and body.can_merge:
-		if body.clown_type == clown_type and clown_type < CLOWNS.size() - 1:
+	# Make sure we're colliding with another ClownBall
+	if not body is ClownBall:
+		return
+	
+	# Prevent merging if already merging or can't merge
+	if is_merging or not can_merge:
+		return
+	
+	if not body.can_merge or body.is_merging:
+		return
+	
+	# Check if same type and not max level
+	if body.clown_type == clown_type and clown_type < CLOWNS.size() - 1:
+		# Only one ball should trigger the merge (prevent double-merge)
+		if get_instance_id() < body.get_instance_id():
 			attempt_merge(body)
 
 func attempt_merge(other: ClownBall):
 	# Prevent double merging
+	is_merging = true
+	other.is_merging = true
 	can_merge = false
 	other.can_merge = false
 	
 	# Calculate merge position
 	var merge_pos = (global_position + other.global_position) / 2.0
 	
-	# Notify game manager to create merged clown
-	get_parent().merge_clowns(self, other, merge_pos, clown_type + 1)
+	# Get the game manager (parent node)
+	var game_manager = get_parent()
+	if game_manager and game_manager.has_method("merge_clowns"):
+		game_manager.merge_clowns(self, other, merge_pos, clown_type + 1)
+	else:
+		print("ERROR: Could not find game_manager!")

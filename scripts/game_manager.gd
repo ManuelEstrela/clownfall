@@ -30,23 +30,50 @@ signal game_over_triggered(final_score: int)
 func _ready():
 	randomize()
 	
-	# Calculate play area based on container position
-	container_center_x = 960.0  # center of 1920
-	container_center_y = 540.0  # center of 1080
+	# Get the actual viewport size
+	var viewport_size = get_viewport_rect().size
 	
-	# IMPORTANT: Adjust these based on your Container's actual scale!
-	# If Container scale is 0.4: use 204.8 and 307.2
-	# If Container scale is 0.5: use 256 and 384
-	# Check Inspector → Transform → Scale when Container is selected
-	var container_half_width = 409.6  # ADJUST THIS based on container scale
-	var container_half_height = 614.4  # ADJUST THIS based on container scale
+	# Calculate center based on viewport
+	container_center_x = viewport_size.x / 2.0
+	container_center_y = viewport_size.y / 2.0
+	
+	# Update Container sprite position and scale to match viewport
+	var container = $Container
+	container.position = Vector2(container_center_x, container_center_y)
+	
+	# Scale container to fit viewport height (with some padding)
+	# Original container image is 1024x1536
+	var original_height = 1536.0
+	var target_height = viewport_size.y * 0.85  # Use 85% of viewport height
+	var container_scale = target_height / original_height
+	container.scale = Vector2(container_scale, container_scale)
+	
+	# Calculate scaled dimensions
+	var container_half_width = (1024.0 * container_scale) / 2.0
+	var container_half_height = (1536.0 * container_scale) / 2.0
 	var wall_thickness = 20.0
 	
 	# Calculate boundaries with some padding
-	play_area_left = container_center_x - container_half_width + wall_thickness + 10
-	play_area_right = container_center_x + container_half_width - wall_thickness - 10
-	drop_y = container_center_y - container_half_height + 80
-	danger_y = container_center_y - container_half_height + 100
+	play_area_left = container_center_x - container_half_width + wall_thickness + 20
+	play_area_right = container_center_x + container_half_width - wall_thickness - 20
+	drop_y = container_center_y - container_half_height + 100
+	danger_y = container_center_y - container_half_height + 120
+	
+	# Update wall positions to match container
+	# Your scene has 3 separate StaticBody2D nodes
+	var left_wall_body = $Walls/StaticBody2D
+	var right_wall_body = $Walls/StaticBody2D2
+	var floor_body = $Walls/StaticBody2D3
+	
+	# Position the StaticBody2D nodes relative to container center
+	left_wall_body.position = Vector2(container_center_x - container_half_width + 19.5, container_center_y + 121)
+	right_wall_body.position = Vector2(container_center_x + container_half_width - 17.5, container_center_y + 124)
+	floor_body.position = Vector2(container_center_x + 7, container_center_y + container_half_height + 35)
+	
+	print("Viewport size: ", viewport_size)
+	print("Container center: ", container_center_x, ", ", container_center_y)
+	print("Play area: ", play_area_left, " to ", play_area_right)
+	print("Drop Y: ", drop_y)
 	
 	# Initialize clown types
 	current_clown_type = randi() % 5
@@ -56,10 +83,10 @@ func _ready():
 	# Create van sprite first
 	van_sprite = Sprite2D.new()
 	van_sprite.texture = load("res://assets/images/van.png")
-	van_sprite.scale = Vector2(0.8, 0.8)
+	van_sprite.scale = Vector2(0.6, 0.6)
 	van_sprite.z_index = 100
 	add_child(van_sprite)
-	van_sprite.global_position = Vector2(container_center_x, drop_y - 28)
+	van_sprite.global_position = Vector2(container_center_x, drop_y - 44)
 	
 	# Spawn preview clown after van is created
 	spawn_preview()
@@ -134,19 +161,25 @@ func drop_clown():
 	update_next_preview()
 	
 	# Spawn new preview after delay
-	await get_tree().create_timer(0.3).timeout
+	await get_tree().create_timer(0.5).timeout
 	if not game_over:
 		can_drop = true
 		spawn_preview()
 
 func merge_clowns(clown1, clown2, merge_pos: Vector2, new_type: int):
+	print("Merging! Type: ", new_type)
+	
 	# Add score
-	score += ClownBallScript.CLOWNS[new_type].score
+	var points = ClownBallScript.CLOWNS[new_type].score
+	score += points
 	score_changed.emit(score)
 	
 	# Remove old clowns
 	clown1.queue_free()
 	clown2.queue_free()
+	
+	# Small delay before creating new clown
+	await get_tree().create_timer(0.05).timeout
 	
 	# Create new merged clown
 	var new_clown = ClownBallScene.instantiate()
@@ -154,7 +187,10 @@ func merge_clowns(clown1, clown2, merge_pos: Vector2, new_type: int):
 	new_clown.setup(new_type)
 	new_clown.global_position = merge_pos
 	new_clown.freeze = false
-	new_clown.apply_central_impulse(Vector2(0, -300))  # Bounce up
+	
+	# Add some upward impulse for effect
+	await get_tree().create_timer(0.01).timeout
+	new_clown.apply_central_impulse(Vector2(0, -200))
 
 func _process(delta):
 	if game_over:
@@ -165,18 +201,20 @@ func _process(delta):
 
 func check_danger_zone(delta: float):
 	for child in get_children():
-		if child is RigidBody2D and child.has_method("setup"):  # It's a clown ball
-			if not child.freeze:
-				if child.global_position.y < danger_y and child.linear_velocity.length() < 10:
-					if not child.has_meta("danger_timer"):
-						child.set_meta("danger_timer", 0.0)
-					var timer = child.get_meta("danger_timer") + delta
-					child.set_meta("danger_timer", timer)
-					if timer > 2.0:  # 2 seconds in danger = game over
-						trigger_game_over()
-						return
-				else:
+		if child is ClownBall and not child.freeze:
+			# Check if ball is in danger zone and nearly stationary
+			if child.global_position.y < danger_y and child.linear_velocity.length() < 20:
+				if not child.has_meta("danger_timer"):
 					child.set_meta("danger_timer", 0.0)
+				
+				var timer = child.get_meta("danger_timer") + delta
+				child.set_meta("danger_timer", timer)
+				
+				if timer > 3.0:  # 3 seconds in danger = game over
+					trigger_game_over()
+					return
+			else:
+				child.set_meta("danger_timer", 0.0)
 
 func trigger_game_over():
 	game_over = true
@@ -188,3 +226,4 @@ func trigger_game_over():
 		van_sprite.queue_free()
 		van_sprite = null
 	game_over_triggered.emit(score)
+	print("Game Over! Final Score: ", score)

@@ -5,13 +5,13 @@
 [ext_resource type="PackedScene" uid="uid://b6cgppxwy3dfv" path="res://ui/game_ui.tscn" id="3_ywgp6"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_47u71"]
-size = Vector2(39, 944)
-
-[sub_resource type="RectangleShape2D" id="RectangleShape2D_ywgp6"]
-size = Vector2(35, 944)
+size = Vector2(39, 1273)
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_0vfqx"]
 size = Vector2(1036, 70)
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_ywgp6"]
+size = Vector2(35, 1271)
 
 [node name="GameWorld" type="Node2D"]
 script = ExtResource("1_47u71")
@@ -23,17 +23,23 @@ texture = ExtResource("1_0biqy")
 
 [node name="Walls" type="CollisionShape2D" parent="."]
 
-[node name="LeftWall" type="CollisionShape2D" parent="Walls"]
-position = Vector2(568, 661)
+[node name="StaticBody2D" type="StaticBody2D" parent="Walls"]
+
+[node name="LeftWall" type="CollisionShape2D" parent="Walls/StaticBody2D"]
+position = Vector2(568, 496.5)
 shape = SubResource("RectangleShape2D_47u71")
 
-[node name="RightWall" type="CollisionShape2D" parent="Walls"]
-position = Vector2(1356, 664)
-shape = SubResource("RectangleShape2D_ywgp6")
+[node name="StaticBody2D2" type="StaticBody2D" parent="Walls"]
 
-[node name="Floor" type="CollisionShape2D" parent="Walls"]
+[node name="Floor" type="CollisionShape2D" parent="Walls/StaticBody2D2"]
 position = Vector2(967, 1025)
 shape = SubResource("RectangleShape2D_0vfqx")
+
+[node name="StaticBody2D3" type="StaticBody2D" parent="Walls"]
+
+[node name="RightWall" type="CollisionShape2D" parent="Walls/StaticBody2D3"]
+position = Vector2(1356, 500.5)
+shape = SubResource("RectangleShape2D_ywgp6")
 
 [node name="GameUI" parent="." instance=ExtResource("3_ywgp6")]
 
