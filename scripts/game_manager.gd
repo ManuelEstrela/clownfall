@@ -136,10 +136,10 @@ func _ready():
 	# Create van sprite
 	van_sprite = Sprite2D.new()
 	van_sprite.texture = load("res://assets/images/van.png")
-	van_sprite.scale = Vector2(0.6, 0.6) * container_scale  # Scale van with container
+	van_sprite.scale = Vector2(0.87, 0.87) * container_scale  # Scale van with container
 	van_sprite.z_index = 100
 	add_child(van_sprite)
-	van_sprite.global_position = Vector2(container_center_x, drop_y - 44)
+	van_sprite.global_position = Vector2(container_center_x, drop_y - 41)
 	
 	# Spawn preview clown after van is created
 	spawn_preview()
@@ -180,7 +180,7 @@ func spawn_preview():
 	add_child(preview_clown)  # Add to tree FIRST
 	preview_clown.setup(current_clown_type)  # Then setup
 	preview_clown.freeze = true  # No physics yet
-	preview_clown.modulate.a = 0.8  # Slightly transparent
+	preview_clown.modulate.a = 0.9  # Slightly transparent
 	preview_clown.global_position = Vector2(start_x, start_y)
 
 func update_next_preview():

@@ -52,7 +52,7 @@ func setup(type: int):
 	# Physics properties
 	physics_material_override = PhysicsMaterial.new()
 	physics_material_override.friction = 0.8
-	physics_material_override.bounce = 0.4
+	physics_material_override.bounce = 0.3
 	linear_damp = 0.1
 	angular_damp = 1.0
 	
