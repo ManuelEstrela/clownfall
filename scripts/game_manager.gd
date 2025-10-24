@@ -11,10 +11,18 @@ var can_drop: bool = true
 var current_clown_type: int = 0
 var next_clown_type: int = 0
 
+# TEST MODE - drops all clowns in order
+var test_mode: bool = false
+var test_clown_index: int = 0
+
 # Preview clown
 var preview_clown = null
 var van_sprite: Sprite2D = null
 var background_sprite: Sprite2D = null
+
+# Audio players
+var click_sound: AudioStreamPlayer = null
+var pop_sounds: Array[AudioStreamPlayer] = []
 
 # Boundaries (calculated dynamically)
 var play_area_left: float
@@ -78,7 +86,7 @@ func _ready():
 	play_area_left = container_center_x - container_half_width + side_padding
 	play_area_right = container_center_x + container_half_width - side_padding
 	drop_y = container_center_y - container_half_height + top_padding
-	danger_y = drop_y + 40
+	danger_y = drop_y + 120
 	
 	# Get wall bodies - they're under Walls node
 	var left_wall_collision = $Walls/StaticBody2D/LeftWall
@@ -128,9 +136,20 @@ func _ready():
 	print("Right wall X: ", right_wall_collision.position.x)
 	print("Floor Y: ", floor_collision.position.y)
 	
-	# Initialize clown types
-	current_clown_type = randi() % 5
-	next_clown_type = randi() % 5
+	# Setup audio players
+	setup_audio()
+	
+	# TEST MODE: Start with first clown
+	if test_mode:
+		print("=== TEST MODE: Dropping all clowns in order ===")
+		current_clown_type = test_clown_index
+		next_clown_type = (test_clown_index + 1) % ClownBallScript.CLOWNS.size()
+	else:
+		# NORMAL MODE (commented out for testing)
+		# Initialize clown types randomly
+		current_clown_type = randi() % 5
+		next_clown_type = randi() % 5
+	
 	update_next_preview()
 	
 	# Create van sprite
@@ -143,6 +162,23 @@ func _ready():
 	
 	# Spawn preview clown after van is created
 	spawn_preview()
+
+func setup_audio():
+	# Create click sound player
+	click_sound = AudioStreamPlayer.new()
+	click_sound.stream = load("res://assets/sounds/assets_click.ogg")
+	click_sound.volume_db = 0
+	add_child(click_sound)
+	
+	# Create pop sound players (one for each merge type)
+	for i in range(11):  # 11 clowns means 10 possible merges (0-9)
+		var pop_player = AudioStreamPlayer.new()
+		pop_player.stream = load("res://assets/sounds/assets_pop" + str(i) + ".mp3")
+		pop_player.volume_db = 0
+		add_child(pop_player)
+		pop_sounds.append(pop_player)
+	
+	print("Audio setup complete!")
 
 func _input(event):
 	if game_over or not can_drop:
@@ -194,6 +230,10 @@ func drop_clown():
 	
 	can_drop = false
 	
+	# Play click sound
+	if click_sound:
+		click_sound.play()
+	
 	var drop_x = preview_clown.global_position.x
 	var drop_type = current_clown_type
 	
@@ -208,9 +248,19 @@ func drop_clown():
 	new_clown.global_position = Vector2(drop_x, drop_y)
 	new_clown.freeze = false  # Enable physics
 	
-	# Update clown types
-	current_clown_type = next_clown_type
-	next_clown_type = randi() % min(5, current_clown_type + 2)  # Spawn up to 2 tiers ahead
+	# TEST MODE: Cycle through all clowns in order
+	if test_mode:
+		test_clown_index += 1
+		if test_clown_index >= ClownBallScript.CLOWNS.size():
+			test_clown_index = 0  # Loop back to first clown
+		current_clown_type = test_clown_index
+		next_clown_type = (test_clown_index + 1) % ClownBallScript.CLOWNS.size()
+	else:
+		# NORMAL MODE (commented out for testing)
+		# Update clown types randomly
+		current_clown_type = next_clown_type
+		next_clown_type = randi() % min(5, current_clown_type + 2)  # Spawn up to 2 tiers ahead
+	
 	update_next_preview()
 	
 	# Spawn new preview after delay
@@ -221,6 +271,11 @@ func drop_clown():
 
 func merge_clowns(clown1, clown2, merge_pos: Vector2, new_type: int):
 	print("Merging! Type: ", new_type)
+	
+	# Play pop sound for this merge (clown type that was merged)
+	var merge_sound_index = clown1.clown_type  # The type that merged (0-9)
+	if merge_sound_index < pop_sounds.size():
+		pop_sounds[merge_sound_index].play()
 	
 	# Add score
 	var points = ClownBallScript.CLOWNS[new_type].score
@@ -255,28 +310,50 @@ func _process(delta):
 func check_danger_zone(delta: float):
 	for child in get_children():
 		if child is ClownBall and not child.freeze:
-			# Check if ball is in danger zone and nearly stationary
-			if child.global_position.y < danger_y and child.linear_velocity.length() < 20:
-				if not child.has_meta("danger_timer"):
-					child.set_meta("danger_timer", 0.0)
-				
-				var timer = child.get_meta("danger_timer") + delta
-				child.set_meta("danger_timer", timer)
-				
-				if timer > 3.0:  # 3 seconds in danger = game over
-					trigger_game_over()
-					return
+			# Check if ball is above the danger line
+			if child.global_position.y < danger_y:
+				# Check if ball has settled (low velocity)
+				if child.linear_velocity.length() < 50:
+					if not child.has_meta("danger_timer"):
+						child.set_meta("danger_timer", 0.0)
+					
+					var timer = child.get_meta("danger_timer") + delta
+					child.set_meta("danger_timer", timer)
+					
+					# Game over after only 1 second in danger zone
+					if timer > 1.0:
+						trigger_game_over()
+						return
 			else:
-				child.set_meta("danger_timer", 0.0)
+				# Reset timer if ball drops below danger line
+				if child.has_meta("danger_timer"):
+					child.set_meta("danger_timer", 0.0)
 
 func trigger_game_over():
+	if game_over:
+		return  # Already triggered
+		
 	game_over = true
 	can_drop = false
+	
+	print("Game Over! Final Score: ", score)
+	
+	# Remove preview clown and van
 	if preview_clown:
 		preview_clown.queue_free()
 		preview_clown = null
 	if van_sprite:
 		van_sprite.queue_free()
 		van_sprite = null
+	
+	# Freeze all clown balls
+	for child in get_children():
+		if child is ClownBall:
+			child.freeze = true
+	
+	# Emit game over signal
 	game_over_triggered.emit(score)
-	print("Game Over! Final Score: ", score)
+	
+	# Restart after 3 seconds
+	await get_tree().create_timer(3.0).timeout
+	get_tree().reload_current_scene()
