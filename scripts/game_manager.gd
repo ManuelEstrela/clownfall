@@ -12,7 +12,7 @@ var current_clown_type: int = 0
 var next_clown_type: int = 0
 
 # TEST MODE - drops all clowns in order
-var test_mode: bool = false
+var test_mode: bool = true
 var test_clown_index: int = 0
 
 # Preview clown

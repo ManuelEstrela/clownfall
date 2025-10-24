@@ -17,14 +17,14 @@ const CLOWNS = [
 	{"name": "Tessa", "size": 35, "score": 1, "image": "res://assets/images/tessa.png"},
 	{"name": "Twinkles", "size": 42, "score": 3, "image": "res://assets/images/twinkles.png"},
 	{"name": "Reina", "size": 48, "score": 6, "image": "res://assets/images/reina.png"},
-	{"name": "Osvaldo", "size": 54, "score": 10, "image": "res://assets/images/osvaldo.png"},
-	{"name": "Hazel", "size": 60, "score": 15, "image": "res://assets/images/hazel.png"},
-	{"name": "Mumbles", "size": 66, "score": 21, "image": "res://assets/images/mumbles.png"},
-	{"name": "Sneaky", "size": 72, "score": 28, "image": "res://assets/images/sneaky.png"},
-	{"name": "Wendy", "size": 78, "score": 36, "image": "res://assets/images/wendy.png"},
-	{"name": "Chatty", "size": 84, "score": 45, "image": "res://assets/images/chatty.png"},
-	{"name": "Cups", "size": 90, "score": 55, "image": "res://assets/images/cups.png"},
-	{"name": "Kirk", "size": 96, "score": 66, "image": "res://assets/images/kirk.png"},
+	{"name": "Osvaldo", "size": 58, "score": 10, "image": "res://assets/images/osvaldo.png"},
+	{"name": "Hazel", "size": 72, "score": 15, "image": "res://assets/images/hazel.png"},
+	{"name": "Mumbles", "size": 80, "score": 21, "image": "res://assets/images/mumbles.png"},
+	{"name": "Sneaky", "size": 92, "score": 28, "image": "res://assets/images/sneaky.png"},
+	{"name": "Wendy", "size": 100, "score": 36, "image": "res://assets/images/wendy.png"},
+	{"name": "Chatty", "size": 130, "score": 45, "image": "res://assets/images/chatty.png"},
+	{"name": "Cups", "size": 150, "score": 55, "image": "res://assets/images/cups.png"},
+	{"name": "Kirk", "size": 192, "score": 66, "image": "res://assets/images/kirk.png"},
 ]
 
 func setup(type: int):
