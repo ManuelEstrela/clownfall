@@ -1,30 +1,56 @@
-[gd_scene load_steps=2 format=3 uid="uid://dy47jvj4ehhsg"]
+[gd_scene load_steps=3 format=3 uid="uid://dy47jvj4ehhsg"]
 
 [ext_resource type="Script" uid="uid://b5ygrvi8ohrlk" path="res://ui/leaderboard_entry.gd" id="1_nmrfk"]
 
-[node name="PanelContainer" type="PanelContainer"]
-custom_minimum_size = Vector2(300, 300)
-offset_right = 40.0
-offset_bottom = 40.0
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_entry"]
+bg_color = Color(0.2, 0.2, 0.25, 0.5)
+corner_radius_top_left = 5
+corner_radius_top_right = 5
+corner_radius_bottom_right = 5
+corner_radius_bottom_left = 5
+
+[node name="LeaderboardEntry" type="PanelContainer"]
+custom_minimum_size = Vector2(300, 50)
+offset_right = 300.0
+offset_bottom = 50.0
+size_flags_horizontal = 3
+theme_override_styles/panel = SubResource("StyleBoxFlat_entry")
 script = ExtResource("1_nmrfk")
 
-[node name="HBoxContainer" type="HBoxContainer" parent="."]
+[node name="MarginContainer" type="MarginContainer" parent="."]
+layout_mode = 2
+theme_override_constants/margin_left = 10
+theme_override_constants/margin_top = 8
+theme_override_constants/margin_right = 10
+theme_override_constants/margin_bottom = 8
+
+[node name="HBoxContainer" type="HBoxContainer" parent="MarginContainer"]
 layout_mode = 2
 theme_override_constants/separation = 15
 
-[node name="RankLabel" type="Label" parent="HBoxContainer"]
-custom_minimum_size = Vector2(70, 0)
+[node name="RankLabel" type="Label" parent="MarginContainer/HBoxContainer"]
+custom_minimum_size = Vector2(60, 0)
 layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.84, 0, 1)
 theme_override_font_sizes/font_size = 18
+text = "#1"
 horizontal_alignment = 1
+vertical_alignment = 1
 
-[node name="UsernameLabel" type="Label" parent="HBoxContainer"]
-custom_minimum_size = Vector2(150, 0)
+[node name="UsernameLabel" type="Label" parent="MarginContainer/HBoxContainer"]
 layout_mode = 2
 size_flags_horizontal = 3
+theme_override_colors/font_color = Color(1, 1, 1, 1)
 theme_override_font_sizes/font_size = 16
+text = "Player Name"
+vertical_alignment = 1
+text_overrun_behavior = 3
 
-[node name="ScoreLabel" type="Label" parent="HBoxContainer"]
-custom_minimum_size = Vector2(100, 0)
+[node name="ScoreLabel" type="Label" parent="MarginContainer/HBoxContainer"]
+custom_minimum_size = Vector2(70, 0)
 layout_mode = 2
+theme_override_colors/font_color = Color(0.8, 1, 0.8, 1)
+theme_override_font_sizes/font_size = 18
+text = "999"
 horizontal_alignment = 2
+vertical_alignment = 1

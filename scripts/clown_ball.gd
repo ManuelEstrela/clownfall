@@ -12,19 +12,20 @@ var is_merging: bool = false
 @onready var sprite: Sprite2D = $Sprite
 @onready var collision: CollisionShape2D = $Collision
 
-# Clown config (matches your JS)
+# Clown config with individual hitbox scales
+# hitbox_scale: 1.0 = perfect circle, 0.95 = 5% smaller, 1.05 = 5% larger
 const CLOWNS = [
-	{"name": "Tessa", "size": 35, "score": 1, "image": "res://assets/images/tessa.png"},
-	{"name": "Twinkles", "size": 42, "score": 3, "image": "res://assets/images/twinkles.png"},
-	{"name": "Reina", "size": 48, "score": 6, "image": "res://assets/images/reina.png"},
-	{"name": "Osvaldo", "size": 58, "score": 10, "image": "res://assets/images/osvaldo.png"},
-	{"name": "Hazel", "size": 72, "score": 15, "image": "res://assets/images/hazel.png"},
-	{"name": "Mumbles", "size": 80, "score": 21, "image": "res://assets/images/mumbles.png"},
-	{"name": "Sneaky", "size": 92, "score": 28, "image": "res://assets/images/sneaky.png"},
-	{"name": "Wendy", "size": 100, "score": 36, "image": "res://assets/images/wendy.png"},
-	{"name": "Chatty", "size": 130, "score": 45, "image": "res://assets/images/chatty.png"},
-	{"name": "Cups", "size": 150, "score": 55, "image": "res://assets/images/cups.png"},
-	{"name": "Kirk", "size": 192, "score": 66, "image": "res://assets/images/kirk.png"},
+	{"name": "Tessa", "size": 35, "score": 1, "hitbox_scale": 0.95, "image": "res://assets/images/tessa.png"},
+	{"name": "Twinkles", "size": 42, "score": 3, "hitbox_scale": 0.94, "image": "res://assets/images/twinkles.png"},
+	{"name": "Reina", "size": 48, "score": 6, "hitbox_scale": 0.92, "image": "res://assets/images/reina.png"},
+	{"name": "Osvaldo", "size": 58, "score": 10, "hitbox_scale": 0.92, "image": "res://assets/images/osvaldo.png"},
+	{"name": "Hazel", "size": 72, "score": 15, "hitbox_scale": 0.92, "image": "res://assets/images/hazel.png"},
+	{"name": "Mumbles", "size": 80, "score": 21, "hitbox_scale": 0.92, "image": "res://assets/images/mumbles.png"},
+	{"name": "Sneaky", "size": 92, "score": 28, "hitbox_scale": 0.90, "image": "res://assets/images/sneaky.png"},
+	{"name": "Wendy", "size": 100, "score": 36, "hitbox_scale": 0.94, "image": "res://assets/images/wendy.png"},
+	{"name": "Chatty", "size": 130, "score": 45, "hitbox_scale": 0.84, "image": "res://assets/images/chatty.png"},
+	{"name": "Cups", "size": 150, "score": 55, "hitbox_scale": 0.90, "image": "res://assets/images/cups.png"},
+	{"name": "Kirk", "size": 192, "score": 66, "hitbox_scale": 0.84, "image": "res://assets/images/kirk.png"},
 ]
 
 func setup(type: int):
@@ -33,6 +34,7 @@ func setup(type: int):
 	
 	clown_size = data.size
 	clown_score = data.score
+	var hitbox_scale = data.get("hitbox_scale", 1.0)  # Default to 1.0 if not specified
 	
 	# Wait for node to be ready if needed
 	if not sprite:
@@ -44,15 +46,19 @@ func setup(type: int):
 	sprite.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
 	sprite.scale = Vector2.ONE * (clown_size / sprite.texture.get_width())
 	
-	# Set collision
-	var radius = (clown_size / 2.0) * 0.95  # hitbox scale
+	# ACCURATE HITBOX with per-clown adjustment
+	# Apply the hitbox_scale multiplier for fine-tuning
+	var radius = (clown_size / 2.0) * hitbox_scale
 	collision.shape = CircleShape2D.new()
 	collision.shape.radius = radius
 	
-	# Physics properties
+	# Debug output to see what hitbox was created
+	print("🎪 ", data.name, " - Size: ", clown_size, " | Hitbox Scale: ", hitbox_scale, " | Radius: ", radius)
+	
+	# Physics properties - slightly bouncier for better gameplay feel
 	physics_material_override = PhysicsMaterial.new()
 	physics_material_override.friction = 0.8
-	physics_material_override.bounce = 0.3
+	physics_material_override.bounce = 0.35
 	linear_damp = 0.1
 	angular_damp = 1.0
 	

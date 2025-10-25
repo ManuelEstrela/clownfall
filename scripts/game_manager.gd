@@ -11,6 +11,9 @@ var can_drop: bool = true
 var current_clown_type: int = 0
 var next_clown_type: int = 0
 
+# DEBUG MODE - Set to true to visualize hitboxes
+var debug_hitboxes: bool = true
+
 # TEST MODE - drops all clowns in order
 var test_mode: bool = false
 var test_clown_index: int = 0
@@ -38,6 +41,11 @@ signal game_over_triggered(final_score: int)
 
 func _ready():
 	randomize()
+	
+	# Enable debug draw for physics if debug mode is on
+	if debug_hitboxes:
+		print("🔍 DEBUG MODE: Hitbox visualization ENABLED")
+		get_tree().debug_collisions_hint = true
 	
 	# Get the actual viewport size
 	var viewport_size = get_viewport_rect().size
@@ -80,7 +88,7 @@ func _ready():
 	# Wall thickness and padding
 	var wall_thickness = 40.0 * container_scale  # Scale wall thickness with container
 	var side_padding = 25.0 * container_scale
-	var top_padding = 120.0 * container_scale  # Moved down from 80
+	var top_padding = 160.0 * container_scale  # MOVED DOWN from 120 to show van fully
 	
 	# Calculate boundaries
 	play_area_left = container_center_x - container_half_width + side_padding
@@ -117,7 +125,6 @@ func _ready():
 	floor_shape.size = Vector2(scaled_width - (side_padding * 2), wall_thickness)
 	floor_collision.shape = floor_shape
 	# The container visual bottom needs to account for the thick wooden base
-	# Looking at the container image, the play area ends around 100-120px from the bottom
 	var container_floor_offset = 200.0 * container_scale
 	floor_collision.position = Vector2(
 		container_center_x,
@@ -132,9 +139,6 @@ func _ready():
 	print("Play area X: ", play_area_left, " to ", play_area_right)
 	print("Drop Y: ", drop_y)
 	print("Danger Y: ", danger_y)
-	print("Left wall X: ", left_wall_collision.position.x)
-	print("Right wall X: ", right_wall_collision.position.x)
-	print("Floor Y: ", floor_collision.position.y)
 	
 	# Setup audio players
 	setup_audio()
@@ -145,20 +149,20 @@ func _ready():
 		current_clown_type = test_clown_index
 		next_clown_type = (test_clown_index + 1) % ClownBallScript.CLOWNS.size()
 	else:
-		# NORMAL MODE (commented out for testing)
-		# Initialize clown types randomly
+		# NORMAL MODE
 		current_clown_type = randi() % 5
 		next_clown_type = randi() % 5
 	
 	update_next_preview()
 	
-	# Create van sprite
+	# Create van sprite (MOVED DOWN to show fully)
 	van_sprite = Sprite2D.new()
 	van_sprite.texture = load("res://assets/images/van.png")
-	van_sprite.scale = Vector2(0.87, 0.87) * container_scale  # Scale van with container
+	van_sprite.scale = Vector2(0.87, 0.87) * container_scale
 	van_sprite.z_index = 100
 	add_child(van_sprite)
-	van_sprite.global_position = Vector2(container_center_x, drop_y - 41)
+	# Position van above the drop point
+	van_sprite.global_position = Vector2(container_center_x, drop_y - 60)
 	
 	# Spawn preview clown after van is created
 	spawn_preview()
@@ -209,6 +213,7 @@ func spawn_preview():
 	if van_sprite:
 		start_x = van_sprite.global_position.x
 	
+	# Position preview ball BELOW the van (at the actual drop point)
 	var start_y = drop_y
 	
 	# Create preview ball
@@ -217,11 +222,11 @@ func spawn_preview():
 	preview_clown.setup(current_clown_type)  # Then setup
 	preview_clown.freeze = true  # No physics yet
 	preview_clown.modulate.a = 0.9  # Slightly transparent
+	preview_clown.z_index = 50  # Below van (van is z_index 100)
 	preview_clown.global_position = Vector2(start_x, start_y)
 
 func update_next_preview():
 	# TODO: Update the UI next clown preview
-	# This will connect to your GameUI scene later
 	pass
 
 func drop_clown():
@@ -252,14 +257,13 @@ func drop_clown():
 	if test_mode:
 		test_clown_index += 1
 		if test_clown_index >= ClownBallScript.CLOWNS.size():
-			test_clown_index = 0  # Loop back to first clown
+			test_clown_index = 0
 		current_clown_type = test_clown_index
 		next_clown_type = (test_clown_index + 1) % ClownBallScript.CLOWNS.size()
 	else:
-		# NORMAL MODE (commented out for testing)
-		# Update clown types randomly
+		# NORMAL MODE
 		current_clown_type = next_clown_type
-		next_clown_type = randi() % min(5, current_clown_type + 2)  # Spawn up to 2 tiers ahead
+		next_clown_type = randi() % min(5, current_clown_type + 2)
 	
 	update_next_preview()
 	
@@ -272,8 +276,8 @@ func drop_clown():
 func merge_clowns(clown1, clown2, merge_pos: Vector2, new_type: int):
 	print("Merging! Type: ", new_type)
 	
-	# Play pop sound for this merge (clown type that was merged)
-	var merge_sound_index = clown1.clown_type  # The type that merged (0-9)
+	# Play pop sound for this merge
+	var merge_sound_index = clown1.clown_type
 	if merge_sound_index < pop_sounds.size():
 		pop_sounds[merge_sound_index].play()
 	
@@ -320,7 +324,7 @@ func check_danger_zone(delta: float):
 					var timer = child.get_meta("danger_timer") + delta
 					child.set_meta("danger_timer", timer)
 					
-					# Game over after only 1 second in danger zone
+					# Game over after 1 second in danger zone
 					if timer > 1.0:
 						trigger_game_over()
 						return
