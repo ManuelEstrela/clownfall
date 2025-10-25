@@ -12,7 +12,7 @@ var current_clown_type: int = 0
 var next_clown_type: int = 0
 
 # TEST MODE - drops all clowns in order
-var test_mode: bool = true
+var test_mode: bool = false
 var test_clown_index: int = 0
 
 # Preview clown
@@ -331,12 +331,20 @@ func check_danger_zone(delta: float):
 
 func trigger_game_over():
 	if game_over:
-		return  # Already triggered
+		return
 		
 	game_over = true
 	can_drop = false
 	
 	print("Game Over! Final Score: ", score)
+	
+	# ⭐ Upload score to Steam
+	var steam = get_node_or_null("/root/SteamManager")
+	if steam and steam.is_on_steam:
+		print("📤 Uploading score to Steam leaderboard...")
+		steam.upload_score(score)
+	else:
+		print("⚠️ Steam not available, score not uploaded")
 	
 	# Remove preview clown and van
 	if preview_clown:

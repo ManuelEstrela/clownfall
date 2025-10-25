@@ -1,0 +1,30 @@
+[gd_scene load_steps=2 format=3 uid="uid://dy47jvj4ehhsg"]
+
+[ext_resource type="Script" uid="uid://b5ygrvi8ohrlk" path="res://ui/leaderboard_entry.gd" id="1_nmrfk"]
+
+[node name="PanelContainer" type="PanelContainer"]
+custom_minimum_size = Vector2(300, 300)
+offset_right = 40.0
+offset_bottom = 40.0
+script = ExtResource("1_nmrfk")
+
+[node name="HBoxContainer" type="HBoxContainer" parent="."]
+layout_mode = 2
+theme_override_constants/separation = 15
+
+[node name="RankLabel" type="Label" parent="HBoxContainer"]
+custom_minimum_size = Vector2(70, 0)
+layout_mode = 2
+theme_override_font_sizes/font_size = 18
+horizontal_alignment = 1
+
+[node name="UsernameLabel" type="Label" parent="HBoxContainer"]
+custom_minimum_size = Vector2(150, 0)
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 16
+
+[node name="ScoreLabel" type="Label" parent="HBoxContainer"]
+custom_minimum_size = Vector2(100, 0)
+layout_mode = 2
+horizontal_alignment = 2

@@ -1,8 +1,9 @@
-[gd_scene load_steps=7 format=3 uid="uid://bpabai10hly68"]
+[gd_scene load_steps=8 format=3 uid="uid://bpabai10hly68"]
 
 [ext_resource type="Texture2D" uid="uid://bskmjqpsooawm" path="res://assets/images/container.png" id="1_0biqy"]
 [ext_resource type="Script" uid="uid://dfsfcewdndt8m" path="res://scripts/game_manager.gd" id="1_47u71"]
 [ext_resource type="PackedScene" uid="uid://b6cgppxwy3dfv" path="res://ui/game_ui.tscn" id="3_ywgp6"]
+[ext_resource type="PackedScene" uid="uid://cx3qn0kp8aokt" path="res://ui/leaderboard_ui.tscn" id="4_0vfqx"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_47u71"]
 size = Vector2(39, 1273)
@@ -42,6 +43,22 @@ position = Vector2(1356, 500.5)
 shape = SubResource("RectangleShape2D_ywgp6")
 
 [node name="GameUI" parent="." instance=ExtResource("3_ywgp6")]
+
+[node name="Control" type="Control" parent="."]
+layout_mode = 3
+anchors_preset = 0
+offset_right = 40.0
+offset_bottom = 40.0
+
+[node name="Control" parent="Control" instance=ExtResource("4_0vfqx")]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+offset_left = 0.0
+offset_top = 0.0
+offset_right = 0.0
+offset_bottom = 0.0
+grow_horizontal = 2
 
 [connection signal="game_over_triggered" from="." to="GameUI" method="show_game_over"]
 [connection signal="score_changed" from="." to="GameUI" method="update_score"]

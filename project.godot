@@ -15,6 +15,10 @@ run/main_scene="uid://bpabai10hly68"
 config/features=PackedStringArray("4.4", "Forward Plus")
 config/icon="res://icon.svg"
 
+[autoload]
+
+SteamManager="*res://scripts/steam_manager.gd"
+
 [display]
 
 window/size/viewport_width=1280
