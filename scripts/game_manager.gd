@@ -22,6 +22,7 @@ var test_clown_index: int = 0
 var preview_clown = null
 var van_sprite: Sprite2D = null
 var background_sprite: Sprite2D = null
+var clown_cycle_sprite: Sprite2D = null
 
 # Audio players
 var click_sound: AudioStreamPlayer = null
@@ -88,7 +89,7 @@ func _ready():
 	# Wall thickness and padding
 	var wall_thickness = 40.0 * container_scale  # Scale wall thickness with container
 	var side_padding = 25.0 * container_scale
-	var top_padding = 160.0 * container_scale  # MOVED DOWN from 120 to show van fully
+	var top_padding = 180.0 * container_scale  # MOVED DOWN MORE to show van + ball fully
 	
 	# Calculate boundaries
 	play_area_left = container_center_x - container_half_width + side_padding
@@ -155,14 +156,17 @@ func _ready():
 	
 	update_next_preview()
 	
-	# Create van sprite (MOVED DOWN to show fully)
+	# Create van sprite (MOVED DOWN more to show fully)
 	van_sprite = Sprite2D.new()
 	van_sprite.texture = load("res://assets/images/van.png")
 	van_sprite.scale = Vector2(0.87, 0.87) * container_scale
 	van_sprite.z_index = 100
 	add_child(van_sprite)
-	# Position van above the drop point
-	van_sprite.global_position = Vector2(container_center_x, drop_y - 60)
+	# Position van above the drop point (moved down more)
+	van_sprite.global_position = Vector2(container_center_x, drop_y - 40)
+	
+	# Add clown cycle decoration
+	add_clown_cycle_decoration(viewport_size, container_scale)
 	
 	# Spawn preview clown after van is created
 	spawn_preview()
@@ -183,6 +187,24 @@ func setup_audio():
 		pop_sounds.append(pop_player)
 	
 	print("Audio setup complete!")
+
+func add_clown_cycle_decoration(viewport_size: Vector2, container_scale: float):
+	# Add the decorative clown cycle on the bottom right
+	clown_cycle_sprite = Sprite2D.new()
+	clown_cycle_sprite.texture = load("res://assets/images/clown_cycle.png")
+	clown_cycle_sprite.z_index = 5  # Above background, below game elements
+	add_child(clown_cycle_sprite)
+	
+	# Position it in the bottom right corner, next to the container
+	var cycle_x = play_area_right + 220  # To the right of container
+	var cycle_y = viewport_size.y - 200  # Near bottom
+	
+	clown_cycle_sprite.global_position = Vector2(cycle_x, cycle_y)
+	
+	# Scale it appropriately
+	clown_cycle_sprite.scale = Vector2(0.7, 0.7) * container_scale
+	
+	print("🎡 Clown cycle decoration added at: ", clown_cycle_sprite.global_position)
 
 func _input(event):
 	if game_over or not can_drop:

@@ -9,27 +9,17 @@ extends Control
 @onready var bgm: AudioStreamPlayer = $AudioStreamPlayer
 
 var is_transitioning: bool = false
-var button_base_scale: float = 0.25  # Even smaller!
+var button_base_scale: float = 0.6  # Even smaller!
 var buttons_initialized: bool = false
 
 func _ready():
 	print("=== Main Menu Loading ===")
 	
-	# FORCE scale IMMEDIATELY - before anything else
-	play_button.scale = Vector2(button_base_scale, button_base_scale)
-	settings_button.scale = Vector2(button_base_scale, button_base_scale)
-	exit_button.scale = Vector2(button_base_scale, button_base_scale)
-	
-	# Set pivot offset to center for proper scaling
-	play_button.pivot_offset = play_button.size / 2
-	settings_button.pivot_offset = settings_button.size / 2
-	exit_button.pivot_offset = exit_button.size / 2
-	
 	# Move game title up more
 	game_title.position.y -= 75
 	
 	# Move button container up significantly
-	button_container.position.y -= 100  # Move up more
+	button_container.position.y -= 130  # Move up more
 	
 	# Load background
 	var bg_texture = load("res://assets/images/landing_background.png")
@@ -49,15 +39,10 @@ func _ready():
 		print("⚠️ Game title placeholder")
 		game_title.modulate = Color(0.8, 0.2, 0.2)
 	
-	# Load button textures
+	# Load button textures with proper scaling
 	load_button_texture(play_button, "res://assets/images/button_play.png")
 	load_button_texture(settings_button, "res://assets/images/button_settings.png")
 	load_button_texture(exit_button, "res://assets/images/button_exit.png")
-	
-	# Force scale AGAIN after loading textures
-	play_button.scale = Vector2(button_base_scale, button_base_scale)
-	settings_button.scale = Vector2(button_base_scale, button_base_scale)
-	exit_button.scale = Vector2(button_base_scale, button_base_scale)
 	
 	# Load and play background music
 	var music = load("res://assets/sounds/landing_bgm.wav")
@@ -79,14 +64,17 @@ func load_button_texture(button: TextureButton, path: String):
 	var texture = load(path)
 	if texture:
 		button.texture_normal = texture
-		# Keep the scale after loading
-		button.scale = Vector2(button_base_scale, button_base_scale)
+		# Wait for the texture to be set, then scale properly
+		await get_tree().process_frame
 		button.pivot_offset = button.size / 2
+		button.scale = Vector2(button_base_scale, button_base_scale)
 		print("✅ Button loaded: ", path)
 	else:
 		print("⚠️ Button placeholder: ", path)
 		var placeholder = create_placeholder_button()
 		button.add_child(placeholder)
+		button.pivot_offset = button.size / 2
+		button.scale = Vector2(button_base_scale, button_base_scale)
 
 func create_placeholder_button() -> ColorRect:
 	var rect = ColorRect.new()
