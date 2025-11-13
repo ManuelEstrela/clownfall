@@ -5,12 +5,31 @@ extends Control
 @onready var play_button: TextureButton = $ButtonContainer/PlayButton
 @onready var settings_button: TextureButton = $ButtonContainer/SettingsButton
 @onready var exit_button: TextureButton = $ButtonContainer/ExitButton
+@onready var button_container = $ButtonContainer
 @onready var bgm: AudioStreamPlayer = $AudioStreamPlayer
 
 var is_transitioning: bool = false
+var button_base_scale: float = 0.25  # Even smaller!
+var buttons_initialized: bool = false
 
 func _ready():
 	print("=== Main Menu Loading ===")
+	
+	# FORCE scale IMMEDIATELY - before anything else
+	play_button.scale = Vector2(button_base_scale, button_base_scale)
+	settings_button.scale = Vector2(button_base_scale, button_base_scale)
+	exit_button.scale = Vector2(button_base_scale, button_base_scale)
+	
+	# Set pivot offset to center for proper scaling
+	play_button.pivot_offset = play_button.size / 2
+	settings_button.pivot_offset = settings_button.size / 2
+	exit_button.pivot_offset = exit_button.size / 2
+	
+	# Move game title up more
+	game_title.position.y -= 75
+	
+	# Move button container up significantly
+	button_container.position.y -= 100  # Move up more
 	
 	# Load background
 	var bg_texture = load("res://assets/images/landing_background.png")
@@ -35,6 +54,11 @@ func _ready():
 	load_button_texture(settings_button, "res://assets/images/button_settings.png")
 	load_button_texture(exit_button, "res://assets/images/button_exit.png")
 	
+	# Force scale AGAIN after loading textures
+	play_button.scale = Vector2(button_base_scale, button_base_scale)
+	settings_button.scale = Vector2(button_base_scale, button_base_scale)
+	exit_button.scale = Vector2(button_base_scale, button_base_scale)
+	
 	# Load and play background music
 	var music = load("res://assets/sounds/landing_bgm.wav")
 	if music:
@@ -48,43 +72,45 @@ func _ready():
 	# Add hover effects
 	setup_button_hover_effects()
 	
+	buttons_initialized = true
 	print("=== Main Menu Ready ===")
 
 func load_button_texture(button: TextureButton, path: String):
 	var texture = load(path)
 	if texture:
 		button.texture_normal = texture
+		# Keep the scale after loading
+		button.scale = Vector2(button_base_scale, button_base_scale)
+		button.pivot_offset = button.size / 2
 		print("✅ Button loaded: ", path)
 	else:
-		# Create placeholder colored rectangle
 		print("⚠️ Button placeholder: ", path)
 		var placeholder = create_placeholder_button()
 		button.add_child(placeholder)
 
 func create_placeholder_button() -> ColorRect:
 	var rect = ColorRect.new()
-	rect.size = Vector2(400, 120)
+	rect.size = Vector2(200, 60)
 	rect.color = Color(0.8, 0.6, 0.2, 0.8)
 	rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	return rect
 
 func setup_button_hover_effects():
-	# Play button
 	play_button.mouse_entered.connect(func(): animate_button_hover(play_button, true))
 	play_button.mouse_exited.connect(func(): animate_button_hover(play_button, false))
 	
-	# Settings button
 	settings_button.mouse_entered.connect(func(): animate_button_hover(settings_button, true))
 	settings_button.mouse_exited.connect(func(): animate_button_hover(settings_button, false))
 	
-	# Exit button
 	exit_button.mouse_entered.connect(func(): animate_button_hover(exit_button, true))
 	exit_button.mouse_exited.connect(func(): animate_button_hover(exit_button, false))
 
 func animate_button_hover(button: TextureButton, is_hovering: bool):
-	var target_scale = Vector2(1.1, 1.1) if is_hovering else Vector2.ONE
+	if not buttons_initialized:
+		return
+		
+	var target_scale = Vector2(button_base_scale * 1.2, button_base_scale * 1.2) if is_hovering else Vector2(button_base_scale, button_base_scale)
 	
-	# Create smooth scale animation
 	var tween = create_tween()
 	tween.set_ease(Tween.EASE_OUT)
 	tween.set_trans(Tween.TRANS_BACK)
@@ -97,23 +123,19 @@ func _on_play_pressed():
 	print("▶️ Play button pressed!")
 	is_transitioning = true
 	
-	# Disable all buttons
 	play_button.disabled = true
 	settings_button.disabled = true
 	exit_button.disabled = true
 	
-	# Fade out music and transition to game
 	fade_out_and_start_game()
 
 func fade_out_and_start_game():
 	var fade_duration = 1.0
 	
-	# Fade out music
 	var tween = create_tween()
 	tween.set_parallel(true)
 	tween.tween_property(bgm, "volume_db", -80, fade_duration)
 	
-	# Fade out screen
 	var fade_overlay = ColorRect.new()
 	fade_overlay.color = Color(0, 0, 0, 0)
 	fade_overlay.size = get_viewport_rect().size
@@ -122,10 +144,8 @@ func fade_out_and_start_game():
 	
 	tween.tween_property(fade_overlay, "color:a", 1.0, fade_duration)
 	
-	# Wait for fade to complete
 	await tween.finished
 	
-	# Change scene
 	print("🎮 Loading game scene...")
 	get_tree().change_scene_to_file("res://scenes/game_world.tscn")
 
@@ -134,8 +154,6 @@ func _on_settings_pressed():
 		return
 	
 	print("⚙️ Settings button pressed!")
-	# TODO: Open settings menu
-	# For now, just show a message
 	print("Settings menu not implemented yet!")
 
 func _on_exit_pressed():
@@ -144,7 +162,6 @@ func _on_exit_pressed():
 	
 	print("👋 Exit button pressed!")
 	
-	# Fade out and quit
 	var tween = create_tween()
 	tween.tween_property(bgm, "volume_db", -80, 0.5)
 	await tween.finished
