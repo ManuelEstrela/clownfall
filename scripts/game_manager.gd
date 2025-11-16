@@ -24,6 +24,12 @@ var van_sprite: Sprite2D = null
 var background_sprite: Sprite2D = null
 var clown_cycle_sprite: Sprite2D = null
 
+# UI Elements
+var score_balloon: Sprite2D = null
+var score_label: Label = null
+var next_balloon: Sprite2D = null
+var next_clown_sprite: Sprite2D = null
+
 # Audio players
 var click_sound: AudioStreamPlayer = null
 var pop_sounds: Array[AudioStreamPlayer] = []
@@ -154,6 +160,9 @@ func _ready():
 		current_clown_type = randi() % 5
 		next_clown_type = randi() % 5
 	
+	# Setup UI elements (score and next preview balloons)
+	setup_ui_balloons(viewport_size, container_scale)
+	
 	update_next_preview()
 	
 	# Create van sprite (MOVED DOWN more to show fully)
@@ -170,6 +179,66 @@ func _ready():
 	
 	# Spawn preview clown after van is created
 	spawn_preview()
+
+func setup_ui_balloons(viewport_size: Vector2, container_scale: float):
+	var balloon_texture = load("res://assets/images/balloon_scorenext.png")
+	
+	# === SCORE BALLOON (Top Left) ===
+	score_balloon = Sprite2D.new()
+	score_balloon.texture = balloon_texture
+	score_balloon.z_index = 200
+	add_child(score_balloon)
+	
+	# Position in top left
+	var score_balloon_scale = 1.5 * container_scale
+	score_balloon.scale = Vector2(score_balloon_scale, score_balloon_scale)
+	score_balloon.position = Vector2(220, 170)
+	
+	# Add score label
+	score_label = Label.new()
+	score_balloon.add_child(score_label)
+	score_label.add_theme_font_size_override("font_size", int(48 / score_balloon_scale))
+	score_label.add_theme_color_override("font_color", Color(0.2, 0.1, 0.05))  # Dark brown
+	score_label.add_theme_color_override("font_outline_color", Color(1, 1, 1, 0.3))
+	score_label.add_theme_constant_override("outline_size", int(2 / score_balloon_scale))
+	score_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	score_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	score_label.position = Vector2(-80 / score_balloon_scale, -50 / score_balloon_scale)
+	score_label.size = Vector2(160 / score_balloon_scale, 80 / score_balloon_scale)
+	score_label.text = "0"
+	
+	print("🎈 Score balloon added at: ", score_balloon.position)
+	
+	# === NEXT CLOWN BALLOON (Top Right) ===
+	next_balloon = Sprite2D.new()
+	next_balloon.texture = balloon_texture
+	next_balloon.z_index = 200
+	add_child(next_balloon)
+	
+	# Position in top right
+	var next_balloon_scale = 1.7 * container_scale
+	next_balloon.scale = Vector2(next_balloon_scale, next_balloon_scale)
+	next_balloon.position = Vector2(viewport_size.x - 210, 190)
+	
+	# Add "NEXT" label
+	var next_label = Label.new()
+	next_balloon.add_child(next_label)
+	next_label.add_theme_font_size_override("font_size", int(32 / next_balloon_scale))
+	next_label.add_theme_color_override("font_color", Color(0.2, 0.1, 0.05))
+	next_label.add_theme_color_override("font_outline_color", Color(1, 1, 1, 0.3))
+	next_label.add_theme_constant_override("outline_size", int(2 / next_balloon_scale))
+	next_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	next_label.position = Vector2(-60 / next_balloon_scale, -80 / next_balloon_scale)
+	next_label.size = Vector2(120 / next_balloon_scale, 40 / next_balloon_scale)
+	next_label.text = "NEXT"
+	
+	# Add next clown sprite (will be updated in update_next_preview)
+	next_clown_sprite = Sprite2D.new()
+	next_balloon.add_child(next_clown_sprite)
+	next_clown_sprite.z_index = 1
+	next_clown_sprite.position = Vector2(0, 10 / next_balloon_scale)
+	
+	print("🎈 Next balloon added at: ", next_balloon.position)
 
 func setup_audio():
 	# Create click sound player
@@ -248,8 +317,18 @@ func spawn_preview():
 	preview_clown.global_position = Vector2(start_x, start_y)
 
 func update_next_preview():
-	# TODO: Update the UI next clown preview
-	pass
+	if next_clown_sprite:
+		var next_clown_data = ClownBallScript.CLOWNS[next_clown_type]
+		next_clown_sprite.texture = load(next_clown_data.image)
+		
+		# Scale the next clown to fit nicely in the balloon
+		var balloon_scale = next_balloon.scale.x if next_balloon else 1.0
+		var target_size = 60.0 / balloon_scale  # Target size in balloon space
+		var clown_texture_size = next_clown_sprite.texture.get_width()
+		var scale_factor = target_size / clown_texture_size
+		next_clown_sprite.scale = Vector2(scale_factor, scale_factor)
+		
+		print("🎪 Next clown updated: ", next_clown_data.name)
 
 func drop_clown():
 	if not preview_clown or not can_drop or game_over:
@@ -307,6 +386,10 @@ func merge_clowns(clown1, clown2, merge_pos: Vector2, new_type: int):
 	var points = ClownBallScript.CLOWNS[new_type].score
 	score += points
 	score_changed.emit(score)
+	
+	# Update score label
+	if score_label:
+		score_label.text = str(score)
 	
 	# Remove old clowns
 	clown1.queue_free()

@@ -9,17 +9,11 @@ extends Control
 @onready var bgm: AudioStreamPlayer = $AudioStreamPlayer
 
 var is_transitioning: bool = false
-var button_base_scale: float = 0.6  # Even smaller!
+var button_base_scale: float = 0.6
 var buttons_initialized: bool = false
 
 func _ready():
 	print("=== Main Menu Loading ===")
-	
-	# Move game title up more
-	game_title.position.y -= 75
-	
-	# Move button container up significantly
-	button_container.position.y -= 130  # Move up more
 	
 	# Load background
 	var bg_texture = load("res://assets/images/landing_background.png")
@@ -30,14 +24,19 @@ func _ready():
 		print("⚠️ Background placeholder - using solid color")
 		background.modulate = Color(0.2, 0.15, 0.25)
 	
-	# Load game title
+	# Load and setup game title
 	var title_texture = load("res://assets/images/game_title.png")
 	if title_texture:
 		game_title.texture = title_texture
+		game_title.expand_mode = TextureRect.EXPAND_FIT_WIDTH_PROPORTIONAL
+		game_title.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 		print("✅ Game title loaded")
 	else:
 		print("⚠️ Game title placeholder")
 		game_title.modulate = Color(0.8, 0.2, 0.2)
+	
+	# Position everything
+	update_layout()
 	
 	# Load button textures with proper scaling
 	load_button_texture(play_button, "res://assets/images/button_play.png")
@@ -60,11 +59,32 @@ func _ready():
 	buttons_initialized = true
 	print("=== Main Menu Ready ===")
 
+func update_layout():
+	var viewport_size = get_viewport_rect().size
+	
+	# Scale title to 60% of screen width
+	if game_title.texture:
+		var texture_size = game_title.texture.get_size()
+		var target_width = viewport_size.x * 0.6
+		var scale_factor = target_width / texture_size.x
+		var scaled_size = texture_size * scale_factor
+		
+		game_title.size = scaled_size
+		game_title.position.x = (viewport_size.x - scaled_size.x) / 2
+		game_title.position.y = viewport_size.y * 0.1  # 15% from top
+	
+	# Center button container
+	button_container.position.x = (viewport_size.x - button_container.size.x) / 2
+	button_container.position.y = viewport_size.y * 0.35  # Middle of screen
+
+func _notification(what):
+	if what == NOTIFICATION_RESIZED and is_node_ready():
+		update_layout()
+
 func load_button_texture(button: TextureButton, path: String):
 	var texture = load(path)
 	if texture:
 		button.texture_normal = texture
-		# Wait for the texture to be set, then scale properly
 		await get_tree().process_frame
 		button.pivot_offset = button.size / 2
 		button.scale = Vector2(button_base_scale, button_base_scale)

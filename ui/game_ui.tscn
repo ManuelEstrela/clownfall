@@ -6,6 +6,7 @@
 script = ExtResource("1_dcmab")
 
 [node name="ScoreLabel" type="Label" parent="."]
+visible = false
 offset_left = 150.0
 offset_top = 100.0
 offset_right = 241.0
@@ -14,6 +15,7 @@ theme_override_font_sizes/font_size = 32
 text = "Score: 0"
 
 [node name="NextPreview" type="Panel" parent="."]
+visible = false
 anchors_preset = 1
 anchor_left = 1.0
 anchor_right = 1.0
@@ -24,12 +26,14 @@ size_flags_horizontal = 8
 size_flags_vertical = 0
 
 [node name="Label" type="Label" parent="NextPreview"]
+visible = false
 layout_mode = 0
 offset_right = 40.0
 offset_bottom = 23.0
 text = "NEXT"
 
 [node name="TextureRect" type="TextureRect" parent="NextPreview"]
+visible = false
 layout_mode = 0
 offset_right = 40.0
 offset_bottom = 40.0
