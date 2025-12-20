@@ -1,26 +1,42 @@
 extends CanvasLayer
 
-@onready var leaderboard_container = $Panel/VBoxContainer/ScrollContainer/LeaderboardMargin/LeaderboardContainer
-@onready var loading_label = $Panel/VBoxContainer/ScrollContainer/LeaderboardMargin/LoadingLabel
-@onready var refresh_button = $Panel/VBoxContainer/BottomMargin/RefreshButton
+# Theme manager
+var theme_manager = preload("res://scripts/theme_manager.gd").new()
 
-const LeaderboardEntry = preload("res://ui/leaderboard_entry.tscn")
+# ====== LEADERBOARD POSITIONING & SIZING ======
+var leaderboard_x: float = 200          # Left-right position
+var leaderboard_y: float = 430          # Up-down position (center point)
+var leaderboard_scale: float = 0.65      # Size multiplier
+
+# Entry positioning (relative to leaderboard sprite)
+var entries_start_y: float = -80        # Where first entry starts (relative to center)
+var entry_spacing: float = 38           # Vertical space between entries
+var entry_x_offset: float = 0           # Horizontal offset from center
+
+# Text settings
+var rank_x: float = -120                # Rank text position
+var name_x: float = -20                 # Name text position  
+var score_x: float = 100                # Score text position
+var font_size: int = 16
+# ============================================
 
 var steam_manager
 var current_player_steam_id: int = 0
+var leaderboard_sprite: Sprite2D = null
+var entry_labels: Array = []  # Store all label nodes
 
 func _ready():
 	print("🎮 Leaderboard UI: Starting initialization...")
 	
-	# Verify nodes exist
-	if not leaderboard_container:
-		print("❌ ERROR: leaderboard_container not found!")
-		return
-	if not loading_label:
-		print("❌ ERROR: loading_label not found!")
-		return
-		
-	print("✅ All UI nodes found successfully")
+	# Create the leaderboard sprite
+	leaderboard_sprite = Sprite2D.new()
+	leaderboard_sprite.texture = theme_manager.get_leaderboard_texture()
+	leaderboard_sprite.z_index = 200
+	add_child(leaderboard_sprite)
+	leaderboard_sprite.position = Vector2(leaderboard_x, leaderboard_y)
+	leaderboard_sprite.scale = Vector2(leaderboard_scale, leaderboard_scale)
+	
+	print("🎨 Leaderboard sprite created")
 	
 	steam_manager = get_node_or_null("/root/SteamManager")
 	
@@ -32,8 +48,6 @@ func _ready():
 	else:
 		print("⚠️ SteamManager not found")
 	
-	refresh_button.pressed.connect(refresh_leaderboard)
-	
 	# Wait a moment for Steam to initialize, then load
 	await get_tree().create_timer(1.0).timeout
 	refresh_leaderboard()
@@ -44,58 +58,74 @@ func _on_steam_initialized(success: bool):
 
 func refresh_leaderboard():
 	if not steam_manager:
-		show_error("Steam Manager not found")
+		print("⚠️ Steam Manager not found")
 		return
 	
-	show_loading()
-	
-	# Request leaderboard data (will use placeholder if not available)
+	print("📊 Requesting leaderboard data...")
 	steam_manager.download_leaderboard_top(10)
 
 func _on_leaderboard_downloaded(entries: Array):
 	print("🎮 Leaderboard UI: Received ", entries.size(), " entries")
 	
-	loading_label.visible = false
-	
-	# Clear old entries
-	for child in leaderboard_container.get_children():
-		child.queue_free()
+	# Clear old entry labels
+	for label in entry_labels:
+		label.queue_free()
+	entry_labels.clear()
 	
 	if entries.size() == 0:
-		show_error("No scores yet! Play to set a score!")
+		print("⚠️ No scores yet!")
 		return
 	
 	print("📋 Creating leaderboard entries...")
 	
-	# Show all entries (up to 10)
-	for i in range(min(10, entries.size())):
+	# Show entries (up to 4 to match your leaderboard design)
+	for i in range(min(4, entries.size())):
 		var entry = entries[i]
-		print("  Creating entry ", i + 1, ": ", entry.username, " - ", entry.score)
-		create_entry(entry, i == 0, entry.steam_id == current_player_steam_id)
+		create_entry_labels(entry, i)
 	
-	# Force update
 	await get_tree().process_frame
-	print("✅ Leaderboard populated with ", leaderboard_container.get_child_count(), " entries")
+	print("✅ Leaderboard populated with ", entry_labels.size() / 3, " entries")
 
-func create_entry(entry: Dictionary, is_first: bool, is_current: bool):
-	var entry_node = LeaderboardEntry.instantiate()
-	leaderboard_container.add_child(entry_node)
+func create_entry_labels(entry: Dictionary, index: int):
+	var y_pos = entries_start_y + (index * entry_spacing)
+	var is_current_player = (entry.steam_id == current_player_steam_id)
 	
-	# Make sure it's visible
-	entry_node.visible = true
-	entry_node.modulate.a = 1.0
+	# Color for text
+	var text_color = Color(1, 1, 1) if not is_current_player else Color(1, 0.9, 0.3)
 	
-	entry_node.set_data(entry.global_rank, entry.username, entry.score, is_first, is_current)
-	print("    ✓ Entry node created and visible")
+	# Rank label
+	var rank_label = Label.new()
+	leaderboard_sprite.add_child(rank_label)
+	rank_label.add_theme_font_size_override("font_size", font_size)
+	rank_label.add_theme_color_override("font_color", text_color)
+	rank_label.text = get_rank_text(entry.global_rank)
+	rank_label.position = Vector2(rank_x, y_pos)
+	entry_labels.append(rank_label)
+	
+	# Name label
+	var name_label = Label.new()
+	leaderboard_sprite.add_child(name_label)
+	name_label.add_theme_font_size_override("font_size", font_size)
+	name_label.add_theme_color_override("font_color", text_color)
+	name_label.text = entry.username
+	name_label.position = Vector2(name_x, y_pos)
+	entry_labels.append(name_label)
+	
+	# Score label
+	var score_label = Label.new()
+	leaderboard_sprite.add_child(score_label)
+	score_label.add_theme_font_size_override("font_size", font_size)
+	score_label.add_theme_color_override("font_color", text_color)
+	score_label.text = str(entry.score)
+	score_label.position = Vector2(score_x, y_pos)
+	entry_labels.append(score_label)
+	
+	print("  ✓ Entry ", index + 1, ": ", entry.username, " - ", entry.score)
 
-func show_loading(message: String = "Loading leaderboard..."):
-	print("📊 Showing loading: ", message)
-	loading_label.text = message
-	loading_label.visible = true
-	for child in leaderboard_container.get_children():
-		child.queue_free()
-
-func show_error(msg: String):
-	print("❌ Error: ", msg)
-	loading_label.text = msg
-	loading_label.visible = true
+func get_rank_text(rank: int) -> String:
+	match rank:
+		1: return "🥇"
+		2: return "🥈"
+		3: return "🥉"
+		4: return "#4"
+		_: return "#" + str(rank)

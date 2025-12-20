@@ -69,9 +69,9 @@ func update_layout():
 		var scale_factor = target_width / texture_size.x
 		var scaled_size = texture_size * scale_factor
 		
-		game_title.size = scaled_size
-		game_title.position.x = (viewport_size.x - scaled_size.x) / 2
-		game_title.position.y = viewport_size.y * 0.1  # 15% from top
+		game_title.size = scaled_size * 1.3
+		game_title.position.x = (viewport_size.x - scaled_size.x) / 2 - 370
+		game_title.position.y = viewport_size.y * 0.09  # 15% from top
 	
 	# Center button container
 	button_container.position.x = (viewport_size.x - button_container.size.x) / 2

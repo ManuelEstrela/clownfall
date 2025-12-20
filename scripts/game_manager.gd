@@ -1,8 +1,41 @@
 extends Node2D
 
+# Theme manager
+var theme_manager = preload("res://scripts/theme_manager.gd").new()
+
 # Preload scenes and script
 const ClownBallScene = preload("res://scenes/clown_ball.tscn")
 const ClownBallScript = preload("res://scripts/clown_ball.gd")
+
+# ====== EASY POSITIONING & SIZING CONTROLS ======
+# Adjust these values to move and resize elements!
+
+# SCORE BALLOON (Top Left)
+var score_balloon_x: float = 220        # Left-right position
+var score_balloon_y: float = 170        # Up-down position
+var score_balloon_scale: float = 1.5    # Size multiplier
+
+# NEXT BALLOON (Top Right)
+var next_balloon_x_offset: float = 210  # Distance from right edge
+var next_balloon_y: float = 190         # Up-down position
+var next_balloon_scale: float = 1.7     # Size multiplier
+
+# CLOWN CYCLE (Bottom Right decoration)
+var clown_cycle_x_offset: float = 220   # Distance from container right edge
+var clown_cycle_y_offset: float = 200   # Distance from bottom
+var clown_cycle_scale: float = 0.7      # Size multiplier
+
+# BOX CONTAINER - VISUAL ONLY
+var box_visual_scale: float = 1.3       # Scale for box/square appearance ONLY (doesn't affect collisions)
+
+# BOX CONTAINER - COLLISION WALLS
+var box_collision_scale: float = 0.95   # 0.95 = 95% of viewport height (for collision boundaries)
+
+# VAN
+var van_y_offset: float = 40            # Distance above drop point
+var van_scale: float = 0.87             # Size multiplier
+
+# ================================================
 
 # Game state
 var score: int = 0
@@ -12,7 +45,7 @@ var current_clown_type: int = 0
 var next_clown_type: int = 0
 
 # DEBUG MODE - Set to true to visualize hitboxes
-var debug_hitboxes: bool = false
+var debug_hitboxes: bool = true
 
 # TEST MODE - drops all clowns in order
 var test_mode: bool = false
@@ -23,6 +56,7 @@ var preview_clown = null
 var van_sprite: Sprite2D = null
 var background_sprite: Sprite2D = null
 var clown_cycle_sprite: Sprite2D = null
+var box_square_sprite: Sprite2D = null  # The inner square that appears on top
 
 # UI Elements
 var score_balloon: Sprite2D = null
@@ -76,17 +110,34 @@ func _ready():
 	# Update Container sprite position and scale to match viewport
 	var container = $Container
 	container.position = Vector2(container_center_x, container_center_y)
-	container.z_index = 0  # Make sure container is above background
+	container.z_index = 0  # Behind the square
 	
-	# Scale container to fit viewport height (with some padding)
+	# THEME: Use themed box texture for container (back layer)
+	container.texture = theme_manager.get_box_texture()
+	
+	# Calculate collision scale (for gameplay boundaries)
 	# Original container image is 1024x1536
 	var original_width = 1024.0
 	var original_height = 1536.0
-	var target_height = viewport_size.y * 0.95  # Use 95% of viewport height
+	var target_height = viewport_size.y * box_collision_scale
 	var container_scale = target_height / original_height
-	container.scale = Vector2(container_scale, container_scale)
 	
-	# Calculate scaled dimensions
+	# Calculate visual scale (for box appearance only)
+	var visual_scale = container_scale * box_visual_scale
+	
+	# Apply VISUAL scale to the box sprite
+	container.scale = Vector2(visual_scale, visual_scale)
+	
+	# Add the SQUARE overlay on top (so clowns appear behind it)
+	box_square_sprite = Sprite2D.new()
+	box_square_sprite.texture = theme_manager.get_box_square_texture()
+	box_square_sprite.z_index = 150  # Above clowns (clowns are z_index 0-100)
+	add_child(box_square_sprite)
+	box_square_sprite.position = Vector2(container_center_x, container_center_y)
+	box_square_sprite.scale = Vector2(visual_scale, visual_scale)  # Same visual scale as box
+	print("🎨 Box square overlay added on top")
+	
+	# Calculate scaled dimensions FOR COLLISIONS (using collision scale, not visual scale)
 	var scaled_width = original_width * container_scale
 	var scaled_height = original_height * container_scale
 	var container_half_width = scaled_width / 2.0
@@ -165,14 +216,14 @@ func _ready():
 	
 	update_next_preview()
 	
-	# Create van sprite (MOVED DOWN more to show fully)
+	# Create van sprite
 	van_sprite = Sprite2D.new()
 	van_sprite.texture = load("res://assets/images/van.png")
-	van_sprite.scale = Vector2(0.87, 0.87) * container_scale
+	van_sprite.scale = Vector2(van_scale, van_scale) * container_scale
 	van_sprite.z_index = 100
 	add_child(van_sprite)
-	# Position van above the drop point (moved down more)
-	van_sprite.global_position = Vector2(container_center_x, drop_y - 40)
+	# Position van above the drop point using configurable offset
+	van_sprite.global_position = Vector2(container_center_x, drop_y - van_y_offset)
 	
 	# Add clown cycle decoration
 	add_clown_cycle_decoration(viewport_size, container_scale)
@@ -181,7 +232,8 @@ func _ready():
 	spawn_preview()
 
 func setup_ui_balloons(viewport_size: Vector2, container_scale: float):
-	var balloon_texture = load("res://assets/images/balloon_scorenext.png")
+	# THEME: Get themed balloon texture
+	var balloon_texture = theme_manager.get_balloon_texture()
 	
 	# === SCORE BALLOON (Top Left) ===
 	score_balloon = Sprite2D.new()
@@ -189,22 +241,22 @@ func setup_ui_balloons(viewport_size: Vector2, container_scale: float):
 	score_balloon.z_index = 200
 	add_child(score_balloon)
 	
-	# Position in top left
-	var score_balloon_scale = 1.5 * container_scale
-	score_balloon.scale = Vector2(score_balloon_scale, score_balloon_scale)
-	score_balloon.position = Vector2(220, 170)
+	# Position using configurable variables
+	var final_score_scale = score_balloon_scale * container_scale
+	score_balloon.scale = Vector2(final_score_scale, final_score_scale)
+	score_balloon.position = Vector2(score_balloon_x, score_balloon_y)
 	
 	# Add score label
 	score_label = Label.new()
 	score_balloon.add_child(score_label)
-	score_label.add_theme_font_size_override("font_size", int(48 / score_balloon_scale))
+	score_label.add_theme_font_size_override("font_size", int(48 / final_score_scale))
 	score_label.add_theme_color_override("font_color", Color(0.2, 0.1, 0.05))  # Dark brown
 	score_label.add_theme_color_override("font_outline_color", Color(1, 1, 1, 0.3))
-	score_label.add_theme_constant_override("outline_size", int(2 / score_balloon_scale))
+	score_label.add_theme_constant_override("outline_size", int(2 / final_score_scale))
 	score_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	score_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	score_label.position = Vector2(-80 / score_balloon_scale, -50 / score_balloon_scale)
-	score_label.size = Vector2(160 / score_balloon_scale, 80 / score_balloon_scale)
+	score_label.position = Vector2(-80 / final_score_scale, -50 / final_score_scale)
+	score_label.size = Vector2(160 / final_score_scale, 80 / final_score_scale)
 	score_label.text = "0"
 	
 	print("🎈 Score balloon added at: ", score_balloon.position)
@@ -215,28 +267,28 @@ func setup_ui_balloons(viewport_size: Vector2, container_scale: float):
 	next_balloon.z_index = 200
 	add_child(next_balloon)
 	
-	# Position in top right
-	var next_balloon_scale = 1.7 * container_scale
-	next_balloon.scale = Vector2(next_balloon_scale, next_balloon_scale)
-	next_balloon.position = Vector2(viewport_size.x - 210, 190)
+	# Position using configurable variables
+	var final_next_scale = next_balloon_scale * container_scale
+	next_balloon.scale = Vector2(final_next_scale, final_next_scale)
+	next_balloon.position = Vector2(viewport_size.x - next_balloon_x_offset, next_balloon_y)
 	
 	# Add "NEXT" label
 	var next_label = Label.new()
 	next_balloon.add_child(next_label)
-	next_label.add_theme_font_size_override("font_size", int(32 / next_balloon_scale))
+	next_label.add_theme_font_size_override("font_size", int(32 / final_next_scale))
 	next_label.add_theme_color_override("font_color", Color(0.2, 0.1, 0.05))
 	next_label.add_theme_color_override("font_outline_color", Color(1, 1, 1, 0.3))
-	next_label.add_theme_constant_override("outline_size", int(2 / next_balloon_scale))
+	next_label.add_theme_constant_override("outline_size", int(2 / final_next_scale))
 	next_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	next_label.position = Vector2(-60 / next_balloon_scale, -80 / next_balloon_scale)
-	next_label.size = Vector2(120 / next_balloon_scale, 40 / next_balloon_scale)
+	next_label.position = Vector2(-60 / final_next_scale, -80 / final_next_scale)
+	next_label.size = Vector2(120 / final_next_scale, 40 / final_next_scale)
 	next_label.text = "NEXT"
 	
 	# Add next clown sprite (will be updated in update_next_preview)
 	next_clown_sprite = Sprite2D.new()
 	next_balloon.add_child(next_clown_sprite)
 	next_clown_sprite.z_index = 1
-	next_clown_sprite.position = Vector2(0, 10 / next_balloon_scale)
+	next_clown_sprite.position = Vector2(0, 10 / final_next_scale)
 	
 	print("🎈 Next balloon added at: ", next_balloon.position)
 
@@ -258,20 +310,20 @@ func setup_audio():
 	print("Audio setup complete!")
 
 func add_clown_cycle_decoration(viewport_size: Vector2, container_scale: float):
-	# Add the decorative clown cycle on the bottom right
+	# THEME: Add the decorative clown cycle on the bottom right
 	clown_cycle_sprite = Sprite2D.new()
-	clown_cycle_sprite.texture = load("res://assets/images/clown_cycle.png")
+	clown_cycle_sprite.texture = theme_manager.get_clown_cycle_texture()
 	clown_cycle_sprite.z_index = 5  # Above background, below game elements
 	add_child(clown_cycle_sprite)
 	
-	# Position it in the bottom right corner, next to the container
-	var cycle_x = play_area_right + 220  # To the right of container
-	var cycle_y = viewport_size.y - 200  # Near bottom
+	# Position using configurable variables
+	var cycle_x = play_area_right + clown_cycle_x_offset
+	var cycle_y = viewport_size.y - clown_cycle_y_offset
 	
 	clown_cycle_sprite.global_position = Vector2(cycle_x, cycle_y)
 	
-	# Scale it appropriately
-	clown_cycle_sprite.scale = Vector2(0.7, 0.7) * container_scale
+	# Scale using configurable variable
+	clown_cycle_sprite.scale = Vector2(clown_cycle_scale, clown_cycle_scale) * container_scale
 	
 	print("🎡 Clown cycle decoration added at: ", clown_cycle_sprite.global_position)
 
