@@ -4,20 +4,19 @@ extends CanvasLayer
 var theme_manager = preload("res://scripts/theme_manager.gd").new()
 
 # ====== LEADERBOARD POSITIONING & SIZING ======
-var leaderboard_x: float = 200          # Left-right position
-var leaderboard_y: float = 430          # Up-down position (center point)
-var leaderboard_scale: float = 0.65      # Size multiplier
+var leaderboard_x: float = 215          # Left-right position
+var leaderboard_y: float = 480          # Up-down position (moved down from 420)
+var leaderboard_scale: float = 0.63      # Size multiplier (increased for better visibility)
 
 # Entry positioning (relative to leaderboard sprite)
-var entries_start_y: float = -80        # Where first entry starts (relative to center)
-var entry_spacing: float = 38           # Vertical space between entries
+var entries_start_y: float = -72        # Where first entry starts (relative to center)
+var entry_spacing: float = 100           # Vertical space between entries (increased from 40 to 50)
 var entry_x_offset: float = 0           # Horizontal offset from center
 
 # Text settings
-var rank_x: float = -120                # Rank text position
-var name_x: float = -20                 # Name text position  
-var score_x: float = 100                # Score text position
-var font_size: int = 16
+var name_x: float = -75                 # Name text position  
+var score_x: float = 85                 # Score text position
+var font_size: int = 20                 # Bigger, readable font
 # ============================================
 
 var steam_manager
@@ -84,29 +83,23 @@ func _on_leaderboard_downloaded(entries: Array):
 		create_entry_labels(entry, i)
 	
 	await get_tree().process_frame
-	print("✅ Leaderboard populated with ", entry_labels.size() / 3, " entries")
+	print("✅ Leaderboard populated with ", entry_labels.size() / 2, " entries")
 
 func create_entry_labels(entry: Dictionary, index: int):
 	var y_pos = entries_start_y + (index * entry_spacing)
 	var is_current_player = (entry.steam_id == current_player_steam_id)
 	
-	# Color for text
-	var text_color = Color(1, 1, 1) if not is_current_player else Color(1, 0.9, 0.3)
-	
-	# Rank label
-	var rank_label = Label.new()
-	leaderboard_sprite.add_child(rank_label)
-	rank_label.add_theme_font_size_override("font_size", font_size)
-	rank_label.add_theme_color_override("font_color", text_color)
-	rank_label.text = get_rank_text(entry.global_rank)
-	rank_label.position = Vector2(rank_x, y_pos)
-	entry_labels.append(rank_label)
+	# Color for text - highlight current player in gold
+	var text_color = Color(1, 1, 1) if not is_current_player else Color(1, 0.84, 0)
 	
 	# Name label
 	var name_label = Label.new()
 	leaderboard_sprite.add_child(name_label)
 	name_label.add_theme_font_size_override("font_size", font_size)
 	name_label.add_theme_color_override("font_color", text_color)
+	# Add outline for better readability
+	name_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.8))
+	name_label.add_theme_constant_override("outline_size", 3)
 	name_label.text = entry.username
 	name_label.position = Vector2(name_x, y_pos)
 	entry_labels.append(name_label)
@@ -116,16 +109,11 @@ func create_entry_labels(entry: Dictionary, index: int):
 	leaderboard_sprite.add_child(score_label)
 	score_label.add_theme_font_size_override("font_size", font_size)
 	score_label.add_theme_color_override("font_color", text_color)
+	# Add outline for better readability
+	score_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.8))
+	score_label.add_theme_constant_override("outline_size", 3)
 	score_label.text = str(entry.score)
 	score_label.position = Vector2(score_x, y_pos)
 	entry_labels.append(score_label)
 	
 	print("  ✓ Entry ", index + 1, ": ", entry.username, " - ", entry.score)
-
-func get_rank_text(rank: int) -> String:
-	match rank:
-		1: return "🥇"
-		2: return "🥈"
-		3: return "🥉"
-		4: return "#4"
-		_: return "#" + str(rank)

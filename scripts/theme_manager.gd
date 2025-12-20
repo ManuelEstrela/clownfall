@@ -1,7 +1,7 @@
 extends Node
 
 # Change this to switch themes: "blue", "pink", "purple", "red", "yellow"
-var current_theme: String = "yellow"
+var current_theme: String = "purple"
 
 # Get themed asset path
 func get_themed_asset(category: String) -> String:

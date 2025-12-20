@@ -27,9 +27,12 @@ var clown_cycle_scale: float = 0.7      # Size multiplier
 
 # BOX CONTAINER - VISUAL ONLY
 var box_visual_scale: float = 1.3       # Scale for box/square appearance ONLY (doesn't affect collisions)
+var box_vertical_offset: float = 50    # Move container DOWN (positive = down, negative = up)
+var box_visual_offset_y: float = 37    # ADDED: Move ONLY the visual sprites down (doesn't affect collisions)
 
 # BOX CONTAINER - COLLISION WALLS
 var box_collision_scale: float = 0.95   # 0.95 = 95% of viewport height (for collision boundaries)
+var wall_horizontal_padding: float = 28.0  # ADDED: Extra padding to move walls inward (higher = walls closer together)
 
 # VAN
 var van_y_offset: float = 40            # Distance above drop point
@@ -45,7 +48,7 @@ var current_clown_type: int = 0
 var next_clown_type: int = 0
 
 # DEBUG MODE - Set to true to visualize hitboxes
-var debug_hitboxes: bool = true
+var debug_hitboxes: bool = false
 
 # TEST MODE - drops all clowns in order
 var test_mode: bool = false
@@ -91,16 +94,16 @@ func _ready():
 	# Get the actual viewport size
 	var viewport_size = get_viewport_rect().size
 	
-	# Calculate center based on viewport
+	# Calculate center based on viewport WITH VERTICAL OFFSET
 	container_center_x = viewport_size.x / 2.0
-	container_center_y = viewport_size.y / 2.0
+	container_center_y = (viewport_size.y / 2.0) + box_vertical_offset  # MOVED DOWN
 	
 	# Add background first (behind everything)
 	background_sprite = Sprite2D.new()
 	background_sprite.texture = load("res://assets/images/gameplay_background.png")
 	background_sprite.z_index = -100
 	add_child(background_sprite)
-	background_sprite.position = Vector2(container_center_x, container_center_y)
+	background_sprite.position = Vector2(viewport_size.x / 2.0, viewport_size.y / 2.0)  # Background stays centered
 	# Scale background to cover entire viewport
 	var bg_scale_x = viewport_size.x / background_sprite.texture.get_width()
 	var bg_scale_y = viewport_size.y / background_sprite.texture.get_height()
@@ -109,7 +112,7 @@ func _ready():
 	
 	# Update Container sprite position and scale to match viewport
 	var container = $Container
-	container.position = Vector2(container_center_x, container_center_y)
+	container.position = Vector2(container_center_x, container_center_y + box_visual_offset_y)  # Apply visual offset
 	container.z_index = 0  # Behind the square
 	
 	# THEME: Use themed box texture for container (back layer)
@@ -133,7 +136,7 @@ func _ready():
 	box_square_sprite.texture = theme_manager.get_box_square_texture()
 	box_square_sprite.z_index = 150  # Above clowns (clowns are z_index 0-100)
 	add_child(box_square_sprite)
-	box_square_sprite.position = Vector2(container_center_x, container_center_y)
+	box_square_sprite.position = Vector2(container_center_x, container_center_y + box_visual_offset_y)  # Apply visual offset
 	box_square_sprite.scale = Vector2(visual_scale, visual_scale)  # Same visual scale as box
 	print("🎨 Box square overlay added on top")
 	
@@ -148,9 +151,10 @@ func _ready():
 	var side_padding = 25.0 * container_scale
 	var top_padding = 180.0 * container_scale  # MOVED DOWN MORE to show van + ball fully
 	
-	# Calculate boundaries
-	play_area_left = container_center_x - container_half_width + side_padding
-	play_area_right = container_center_x + container_half_width - side_padding
+	# Calculate boundaries (all use offset center)
+	# Apply extra horizontal padding to match wall positions
+	play_area_left = container_center_x - container_half_width + side_padding + (wall_horizontal_padding * container_scale)
+	play_area_right = container_center_x + container_half_width - side_padding - (wall_horizontal_padding * container_scale)
 	drop_y = container_center_y - container_half_height + top_padding
 	danger_y = drop_y + 120
 	
@@ -159,13 +163,13 @@ func _ready():
 	var floor_collision = $Walls/StaticBody2D2/Floor
 	var right_wall_collision = $Walls/StaticBody2D3/RightWall
 	
-	# Create and configure wall shapes
+	# Create and configure wall shapes (all use offset center)
 	# Left Wall
 	var left_shape = RectangleShape2D.new()
 	left_shape.size = Vector2(wall_thickness, scaled_height)
 	left_wall_collision.shape = left_shape
 	left_wall_collision.position = Vector2(
-		container_center_x - container_half_width + wall_thickness/2,
+		container_center_x - container_half_width + wall_thickness/2 + (wall_horizontal_padding * container_scale),
 		container_center_y
 	)
 	
@@ -174,7 +178,7 @@ func _ready():
 	right_shape.size = Vector2(wall_thickness, scaled_height)
 	right_wall_collision.shape = right_shape
 	right_wall_collision.position = Vector2(
-		container_center_x + container_half_width - wall_thickness/2,
+		container_center_x + container_half_width - wall_thickness/2 - (wall_horizontal_padding * container_scale),
 		container_center_y
 	)
 	
@@ -192,6 +196,7 @@ func _ready():
 	print("=== Game Setup ===")
 	print("Viewport size: ", viewport_size)
 	print("Container center: (", container_center_x, ", ", container_center_y, ")")
+	print("Container vertical offset: ", box_vertical_offset)
 	print("Container scale: ", container_scale)
 	print("Container size: ", scaled_width, " x ", scaled_height)
 	print("Play area X: ", play_area_left, " to ", play_area_right)
@@ -230,6 +235,23 @@ func _ready():
 	
 	# Spawn preview clown after van is created
 	spawn_preview()
+
+func setup_audio():
+	# Create click sound player
+	click_sound = AudioStreamPlayer.new()
+	click_sound.stream = load("res://assets/sounds/assets_click.ogg")
+	click_sound.volume_db = 0
+	add_child(click_sound)
+	
+	# Create pop sound players (one for each merge type)
+	for i in range(11):  # 11 clowns means 10 possible merges (0-9)
+		var pop_player = AudioStreamPlayer.new()
+		pop_player.stream = load("res://assets/sounds/assets_pop" + str(i) + ".mp3")
+		pop_player.volume_db = 0
+		add_child(pop_player)
+		pop_sounds.append(pop_player)
+	
+	print("Audio setup complete!")
 
 func setup_ui_balloons(viewport_size: Vector2, container_scale: float):
 	# THEME: Get themed balloon texture
@@ -291,23 +313,6 @@ func setup_ui_balloons(viewport_size: Vector2, container_scale: float):
 	next_clown_sprite.position = Vector2(0, 10 / final_next_scale)
 	
 	print("🎈 Next balloon added at: ", next_balloon.position)
-
-func setup_audio():
-	# Create click sound player
-	click_sound = AudioStreamPlayer.new()
-	click_sound.stream = load("res://assets/sounds/assets_click.ogg")
-	click_sound.volume_db = 0
-	add_child(click_sound)
-	
-	# Create pop sound players (one for each merge type)
-	for i in range(11):  # 11 clowns means 10 possible merges (0-9)
-		var pop_player = AudioStreamPlayer.new()
-		pop_player.stream = load("res://assets/sounds/assets_pop" + str(i) + ".mp3")
-		pop_player.volume_db = 0
-		add_child(pop_player)
-		pop_sounds.append(pop_player)
-	
-	print("Audio setup complete!")
 
 func add_clown_cycle_decoration(viewport_size: Vector2, container_scale: float):
 	# THEME: Add the decorative clown cycle on the bottom right
