@@ -23,7 +23,7 @@ var next_balloon_scale: float = 1.7     # Size multiplier
 # CLOWN CYCLE (Bottom Right decoration)
 var clown_cycle_x_offset: float = 220   # Distance from container right edge
 var clown_cycle_y_offset: float = 200   # Distance from bottom
-var clown_cycle_scale: float = 0.7      # Size multiplier
+var clown_cycle_scale: float = 0.8      # Size multiplier
 
 # BOX CONTAINER - VISUAL ONLY
 var box_visual_scale: float = 1.3       # Scale for box/square appearance ONLY (doesn't affect collisions)
@@ -51,7 +51,7 @@ var next_clown_type: int = 0
 var debug_hitboxes: bool = false
 
 # TEST MODE - drops all clowns in order
-var test_mode: bool = false
+var test_mode: bool = true
 var test_clown_index: int = 0
 
 # Preview clown
@@ -100,7 +100,7 @@ func _ready():
 	
 	# Add background first (behind everything)
 	background_sprite = Sprite2D.new()
-	background_sprite.texture = load("res://assets/images/gameplay_background.png")
+	background_sprite.texture = load("res://assets/images/landing_background.png")
 	background_sprite.z_index = -100
 	add_child(background_sprite)
 	background_sprite.position = Vector2(viewport_size.x / 2.0, viewport_size.y / 2.0)  # Background stays centered
