@@ -128,17 +128,17 @@ func _on_play_pressed():
 	if is_transitioning:
 		return
 	
-	print("▶️ Play button pressed!")
+	print("▶️ Play button pressed! Going to mode selection...")
 	is_transitioning = true
 	
 	play_button.disabled = true
 	settings_button.disabled = true
 	exit_button.disabled = true
 	
-	fade_out_and_start_game()
+	fade_out_and_go_to_mode_selection()
 
-func fade_out_and_start_game():
-	var fade_duration = 1.0
+func fade_out_and_go_to_mode_selection():
+	var fade_duration = 0.5
 	
 	var tween = create_tween()
 	tween.set_parallel(true)
@@ -154,8 +154,8 @@ func fade_out_and_start_game():
 	
 	await tween.finished
 	
-	print("🎮 Loading game scene...")
-	get_tree().change_scene_to_file("res://scenes/game_world.tscn")
+	print("🎮 Loading mode selection...")
+	get_tree().change_scene_to_file("res://scenes/mode_selection.tscn")
 
 func _on_settings_pressed():
 	if is_transitioning:

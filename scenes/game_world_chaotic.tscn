@@ -1,0 +1,53 @@
+[gd_scene load_steps=8 format=3 uid="uid://v4q63ypq1ryl"]
+
+[ext_resource type="Script" uid="uid://bgj5ao31ye8lt" path="res://scenes/game_manager.gd" id="1_kkdj6"]
+[ext_resource type="Texture2D" uid="uid://bskmjqpsooawm" path="res://assets/images/container.png" id="2_t1pgo"]
+[ext_resource type="PackedScene" uid="uid://b6cgppxwy3dfv" path="res://ui/game_ui.tscn" id="3_p4dp8"]
+[ext_resource type="PackedScene" uid="uid://cx3qn0kp8aokt" path="res://ui/leaderboard_ui.tscn" id="4_sro1i"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_47u71"]
+size = Vector2(39, 1273)
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_0vfqx"]
+size = Vector2(1036, 70)
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_ywgp6"]
+size = Vector2(35, 1271)
+
+[node name="GameWorld" type="Node2D"]
+script = ExtResource("1_kkdj6")
+
+[node name="Container" type="Sprite2D" parent="."]
+position = Vector2(960, 540)
+scale = Vector2(0.8, 0.8)
+texture = ExtResource("2_t1pgo")
+
+[node name="Walls" type="CollisionShape2D" parent="."]
+
+[node name="StaticBody2D" type="StaticBody2D" parent="Walls"]
+
+[node name="LeftWall" type="CollisionShape2D" parent="Walls/StaticBody2D"]
+position = Vector2(568, 496.5)
+shape = SubResource("RectangleShape2D_47u71")
+
+[node name="StaticBody2D2" type="StaticBody2D" parent="Walls"]
+
+[node name="Floor" type="CollisionShape2D" parent="Walls/StaticBody2D2"]
+position = Vector2(967, 1025)
+shape = SubResource("RectangleShape2D_0vfqx")
+
+[node name="StaticBody2D3" type="StaticBody2D" parent="Walls"]
+
+[node name="RightWall" type="CollisionShape2D" parent="Walls/StaticBody2D3"]
+position = Vector2(1356, 500.5)
+shape = SubResource("RectangleShape2D_ywgp6")
+
+[node name="GameUI" parent="." instance=ExtResource("3_p4dp8")]
+
+[node name="Control" type="Control" parent="."]
+layout_mode = 3
+anchors_preset = 0
+offset_right = 40.0
+offset_bottom = 40.0
+
+[node name="Control" parent="Control" instance=ExtResource("4_sro1i")]

@@ -51,7 +51,7 @@ var next_clown_type: int = 0
 var debug_hitboxes: bool = false
 
 # TEST MODE - drops all clowns in order
-var test_mode: bool = true
+var test_mode: bool = false
 var test_clown_index: int = 0
 
 # Preview clown

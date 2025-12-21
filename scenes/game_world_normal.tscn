@@ -1,0 +1,56 @@
+[gd_scene load_steps=8 format=3 uid="uid://bpabai10hly68"]
+
+[ext_resource type="Script" uid="uid://dfsfcewdndt8m" path="res://scripts/game_manager.gd" id="1_x4uxy"]
+[ext_resource type="Texture2D" uid="uid://bskmjqpsooawm" path="res://assets/images/container.png" id="2_o0a3u"]
+[ext_resource type="PackedScene" uid="uid://b6cgppxwy3dfv" path="res://ui/game_ui.tscn" id="3_qc56g"]
+[ext_resource type="PackedScene" uid="uid://cx3qn0kp8aokt" path="res://ui/leaderboard_ui.tscn" id="4_d17v2"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_47u71"]
+size = Vector2(39, 1273)
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_0vfqx"]
+size = Vector2(1036, 70)
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_ywgp6"]
+size = Vector2(35, 1271)
+
+[node name="GameWorld" type="Node2D"]
+script = ExtResource("1_x4uxy")
+
+[node name="Container" type="Sprite2D" parent="."]
+position = Vector2(960, 540)
+scale = Vector2(0.8, 0.8)
+texture = ExtResource("2_o0a3u")
+
+[node name="Walls" type="CollisionShape2D" parent="."]
+
+[node name="StaticBody2D" type="StaticBody2D" parent="Walls"]
+
+[node name="LeftWall" type="CollisionShape2D" parent="Walls/StaticBody2D"]
+position = Vector2(568, 496.5)
+shape = SubResource("RectangleShape2D_47u71")
+
+[node name="StaticBody2D2" type="StaticBody2D" parent="Walls"]
+
+[node name="Floor" type="CollisionShape2D" parent="Walls/StaticBody2D2"]
+position = Vector2(967, 1025)
+shape = SubResource("RectangleShape2D_0vfqx")
+
+[node name="StaticBody2D3" type="StaticBody2D" parent="Walls"]
+
+[node name="RightWall" type="CollisionShape2D" parent="Walls/StaticBody2D3"]
+position = Vector2(1356, 500.5)
+shape = SubResource("RectangleShape2D_ywgp6")
+
+[node name="GameUI" parent="." instance=ExtResource("3_qc56g")]
+
+[node name="Control" type="Control" parent="."]
+layout_mode = 3
+anchors_preset = 0
+offset_right = 40.0
+offset_bottom = 40.0
+
+[node name="Control" parent="Control" instance=ExtResource("4_d17v2")]
+
+[connection signal="game_over_triggered" from="." to="GameUI" method="show_game_over"]
+[connection signal="score_changed" from="." to="GameUI" method="update_score"]
