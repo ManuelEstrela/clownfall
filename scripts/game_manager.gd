@@ -13,17 +13,17 @@ const ClownBallScript = preload("res://scripts/clown_ball.gd")
 # SCORE BALLOON (Top Left)
 var score_balloon_x: float = 220        # Left-right position
 var score_balloon_y: float = 170        # Up-down position
-var score_balloon_scale: float = 1.5    # Size multiplier
+var score_balloon_scale: float = 1.4    # Size multiplier
 
 # NEXT BALLOON (Top Right)
 var next_balloon_x_offset: float = 210  # Distance from right edge
 var next_balloon_y: float = 190         # Up-down position
-var next_balloon_scale: float = 1.7     # Size multiplier
+var next_balloon_scale: float = 1.6     # Size multiplier
 
 # CLOWN CYCLE (Bottom Right decoration)
 var clown_cycle_x_offset: float = 220   # Distance from container right edge
 var clown_cycle_y_offset: float = 200   # Distance from bottom
-var clown_cycle_scale: float = 0.8      # Size multiplier
+var clown_cycle_scale: float = 0.9      # Size multiplier
 
 # BOX CONTAINER - VISUAL ONLY
 var box_visual_scale: float = 1.3       # Scale for box/square appearance ONLY (doesn't affect collisions)

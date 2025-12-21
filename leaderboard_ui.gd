@@ -5,18 +5,18 @@ var theme_manager = preload("res://scripts/theme_manager.gd").new()
 
 # ====== LEADERBOARD POSITIONING & SIZING ======
 var leaderboard_x: float = 215          # Left-right position
-var leaderboard_y: float = 480          # Up-down position (moved down from 420)
+var leaderboard_y: float = 490          # Up-down position (moved down from 420)
 var leaderboard_scale: float = 0.63      # Size multiplier (increased for better visibility)
 
 # Entry positioning (relative to leaderboard sprite)
-var entries_start_y: float = -72        # Where first entry starts (relative to center)
-var entry_spacing: float = 100           # Vertical space between entries (increased from 40 to 50)
+var entries_start_y: float = -82        # Where first entry starts (relative to center)
+var entry_spacing: float = 90           # Vertical space between entries (increased from 40 to 50)
 var entry_x_offset: float = 0           # Horizontal offset from center
 
 # Text settings
 var name_x: float = -75                 # Name text position  
 var score_x: float = 85                 # Score text position
-var font_size: int = 20                 # Bigger, readable font
+var font_size: int = 30                 # Bigger, readable font
 # ============================================
 
 var steam_manager
