@@ -35,6 +35,9 @@ var master_bus: int = AudioServer.get_bus_index("Master")
 var music_bus: int = AudioServer.get_bus_index("Music") if AudioServer.get_bus_index("Music") != -1 else 0
 var sfx_bus: int = AudioServer.get_bus_index("SFX") if AudioServer.get_bus_index("SFX") != -1 else 0
 
+# Colorblind overlay
+var colorblind_overlay: ColorRect = null
+
 # Signals for when settings change
 signal settings_changed
 signal audio_changed
@@ -62,28 +65,113 @@ func apply_audio_settings():
 	audio_changed.emit()
 
 func apply_visual_settings():
-	# Screen mode
+	# Screen mode - FIXED!
 	match screen_mode:
 		0:  # Windowed
 			DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_WINDOWED)
-		1:  # Fullscreen
-			DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN)
-		2:  # Borderless
+			print("✅ Screen mode: Windowed")
+		1:  # Fullscreen (exclusive fullscreen - fastest)
 			DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_EXCLUSIVE_FULLSCREEN)
+			print("✅ Screen mode: Fullscreen")
+		2:  # Borderless (fullscreen window - easier alt-tab)
+			DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN)
+			print("✅ Screen mode: Borderless")
 	
 	# VSync
 	if vsync_enabled:
 		DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_ENABLED)
+		print("✅ VSync: ENABLED (smoother, locks to monitor refresh rate)")
 	else:
 		DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)
+		print("✅ VSync: DISABLED (may tear, unlimited FPS)")
 	
 	# FPS Cap
 	if fps_cap == 0:
 		Engine.max_fps = 0  # Unlimited
+		print("✅ FPS Cap: UNLIMITED")
 	else:
 		Engine.max_fps = fps_cap
+		print("✅ FPS Cap:", fps_cap)
+	
+	# Apply colorblind filter
+	apply_colorblind_filter()
 	
 	visual_changed.emit()
+
+func apply_colorblind_filter():
+	# Remove old overlay if it exists
+	if colorblind_overlay:
+		colorblind_overlay.queue_free()
+		colorblind_overlay = null
+	
+	if colorblind_mode == 0:
+		# No colorblind mode
+		print("✅ Colorblind mode: NONE (normal colors)")
+		return
+	
+	# Create a fullscreen ColorRect with a shader
+	var root = get_tree().root
+	
+	colorblind_overlay = ColorRect.new()
+	colorblind_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE  # Don't block mouse
+	colorblind_overlay.set_anchors_preset(Control.PRESET_FULL_RECT)
+	colorblind_overlay.color = Color.WHITE  # Will be modified by shader
+	
+	# Create shader
+	var shader_code = """
+shader_type canvas_item;
+
+uniform int colorblind_type = 0; // 0=None, 1=Protanopia, 2=Deuteranopia, 3=Tritanopia
+
+void fragment() {
+	vec4 color = texture(SCREEN_TEXTURE, SCREEN_UV);
+	
+	if (colorblind_type == 1) {
+		// Protanopia (red-blind) - confusion between red/green
+		float r = 0.56667 * color.r + 0.43333 * color.g;
+		float g = 0.55833 * color.r + 0.44167 * color.g;
+		float b = 0.24167 * color.g + 0.75833 * color.b;
+		color = vec4(r, g, b, color.a);
+	}
+	else if (colorblind_type == 2) {
+		// Deuteranopia (green-blind) - confusion between red/green
+		float r = 0.625 * color.r + 0.375 * color.g;
+		float g = 0.7 * color.r + 0.3 * color.g;
+		float b = 0.3 * color.g + 0.7 * color.b;
+		color = vec4(r, g, b, color.a);
+	}
+	else if (colorblind_type == 3) {
+		// Tritanopia (blue-blind) - confusion between blue/green
+		float r = 0.95 * color.r + 0.05 * color.g;
+		float g = 0.43333 * color.g + 0.56667 * color.b;
+		float b = 0.475 * color.g + 0.525 * color.b;
+		color = vec4(r, g, b, color.a);
+	}
+	
+	COLOR = color;
+}
+"""
+	
+	var shader = Shader.new()
+	shader.code = shader_code
+	
+	var material = ShaderMaterial.new()
+	material.shader = shader
+	material.set_shader_parameter("colorblind_type", colorblind_mode)
+	
+	colorblind_overlay.material = material
+	
+	# Add to root as top-level node
+	root.add_child(colorblind_overlay)
+	colorblind_overlay.set_owner(root)
+	
+	# Make sure it's on top
+	root.move_child(colorblind_overlay, root.get_child_count() - 1)
+	
+	match colorblind_mode:
+		1: print("✅ Colorblind mode: PROTANOPIA (red-blind)")
+		2: print("✅ Colorblind mode: DEUTERANOPIA (green-blind)")
+		3: print("✅ Colorblind mode: TRITANOPIA (blue-blind)")
 
 # ====== SETTERS ======
 
@@ -116,7 +204,7 @@ func set_fps_cap(cap: int):
 
 func set_colorblind_mode(mode: int):
 	colorblind_mode = clamp(mode, 0, 3)
-	# TODO: Apply colorblind shader/filter when implemented
+	apply_colorblind_filter()
 
 func set_drop_assist(enabled: bool):
 	drop_assist_enabled = enabled
@@ -194,7 +282,7 @@ func save_settings():
 	if file:
 		file.store_var(save_data)
 		file.close()
-		print("✅ Settings saved")
+		print("💾 Settings saved")
 	else:
 		print("❌ Failed to save settings")
 
