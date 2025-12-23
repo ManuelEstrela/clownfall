@@ -30,7 +30,7 @@ var extra_life_timer: float = 0.0
 
 # Rushtime variables
 var rushtime_drop_timer: float = 0.0
-var rushtime_drop_interval: float = 0.5  # Drop a ball every 0.5 seconds
+var rushtime_drop_interval: float = 1  # Drop a ball every 0.5 seconds
 
 # Lights out overlay
 var lights_out_overlay: ColorRect = null

@@ -115,7 +115,7 @@ func apply_colorblind_filter():
 	colorblind_overlay = ColorRect.new()
 	colorblind_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE  # Don't block mouse
 	colorblind_overlay.set_anchors_preset(Control.PRESET_FULL_RECT)
-	colorblind_overlay.color = Color.WHITE  # Will be modified by shader
+	colorblind_overlay.color = Color(1, 1, 1, 0)  # TRANSPARENT - shader will handle the colors
 	
 	# Create shader
 	var shader_code = """
