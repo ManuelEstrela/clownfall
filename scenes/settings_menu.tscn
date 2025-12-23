@@ -1,0 +1,425 @@
+[gd_scene load_steps=2 format=3 uid="uid://rbn1fymkqxq"]
+
+[ext_resource type="Script" uid="uid://ki1j5wwfth3x" path="res://scripts/settings_menu.gd" id="1_settings"]
+
+[node name="SettingsMenu" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_settings")
+
+[node name="Background" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0.15, 0.1, 0.2, 1)
+
+[node name="CategoryButtons" type="HBoxContainer" parent="."]
+layout_mode = 1
+anchors_preset = 5
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -400.0
+offset_top = 50.0
+offset_right = 400.0
+offset_bottom = 110.0
+grow_horizontal = 2
+theme_override_constants/separation = 20
+
+[node name="AudioButton" type="Button" parent="CategoryButtons"]
+custom_minimum_size = Vector2(180, 60)
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_override_font_sizes/font_size = 24
+text = "AUDIO"
+
+[node name="VisualButton" type="Button" parent="CategoryButtons"]
+custom_minimum_size = Vector2(180, 60)
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_override_font_sizes/font_size = 24
+text = "VISUAL"
+
+[node name="GameplayButton" type="Button" parent="CategoryButtons"]
+custom_minimum_size = Vector2(180, 60)
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_override_font_sizes/font_size = 24
+text = "GAMEPLAY"
+
+[node name="StatisticsButton" type="Button" parent="CategoryButtons"]
+custom_minimum_size = Vector2(180, 60)
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_override_font_sizes/font_size = 24
+text = "STATISTICS"
+
+[node name="ContentArea" type="Control" parent="."]
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -400.0
+offset_top = -200.0
+offset_right = 400.0
+offset_bottom = 250.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="AudioPanel" type="VBoxContainer" parent="ContentArea"]
+visible = false
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/separation = 30
+
+[node name="MasterLabel" type="Label" parent="ContentArea/AudioPanel"]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.84, 0, 1)
+theme_override_font_sizes/font_size = 28
+text = "MASTER VOLUME"
+
+[node name="MasterSlider" type="HSlider" parent="ContentArea/AudioPanel"]
+custom_minimum_size = Vector2(0, 40)
+layout_mode = 2
+max_value = 1.0
+step = 0.01
+value = 1.0
+
+[node name="MusicLabel" type="Label" parent="ContentArea/AudioPanel"]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.84, 0, 1)
+theme_override_font_sizes/font_size = 28
+text = "MUSIC VOLUME"
+
+[node name="MusicSlider" type="HSlider" parent="ContentArea/AudioPanel"]
+custom_minimum_size = Vector2(0, 40)
+layout_mode = 2
+max_value = 1.0
+step = 0.01
+value = 1.0
+
+[node name="SFXLabel" type="Label" parent="ContentArea/AudioPanel"]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.84, 0, 1)
+theme_override_font_sizes/font_size = 28
+text = "SFX VOLUME"
+
+[node name="SFXSlider" type="HSlider" parent="ContentArea/AudioPanel"]
+custom_minimum_size = Vector2(0, 40)
+layout_mode = 2
+max_value = 1.0
+step = 0.01
+value = 1.0
+
+[node name="MuteLabel" type="Label" parent="ContentArea/AudioPanel"]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.84, 0, 1)
+theme_override_font_sizes/font_size = 28
+text = "MUTE WHEN TABBED OUT"
+
+[node name="MuteCheckbox" type="CheckBox" parent="ContentArea/AudioPanel"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 24
+text = "Enabled"
+
+[node name="VisualPanel" type="VBoxContainer" parent="ContentArea"]
+visible = false
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/separation = 20
+
+[node name="ScreenModeLabel" type="Label" parent="ContentArea/VisualPanel"]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.84, 0, 1)
+theme_override_font_sizes/font_size = 28
+text = "SCREEN MODE"
+
+[node name="ScreenModeContainer" type="HBoxContainer" parent="ContentArea/VisualPanel"]
+layout_mode = 2
+theme_override_constants/separation = 20
+
+[node name="ScreenModeLeft" type="Button" parent="ContentArea/VisualPanel/ScreenModeContainer"]
+custom_minimum_size = Vector2(60, 50)
+layout_mode = 2
+theme_override_font_sizes/font_size = 32
+text = "<"
+
+[node name="ScreenModeLabel" type="Label" parent="ContentArea/VisualPanel/ScreenModeContainer"]
+custom_minimum_size = Vector2(300, 0)
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 24
+text = "Windowed"
+horizontal_alignment = 1
+
+[node name="ScreenModeRight" type="Button" parent="ContentArea/VisualPanel/ScreenModeContainer"]
+custom_minimum_size = Vector2(60, 50)
+layout_mode = 2
+theme_override_font_sizes/font_size = 32
+text = ">"
+
+[node name="VsyncLabel" type="Label" parent="ContentArea/VisualPanel"]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.84, 0, 1)
+theme_override_font_sizes/font_size = 28
+text = "VSYNC"
+
+[node name="VsyncCheckbox" type="CheckBox" parent="ContentArea/VisualPanel"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 24
+button_pressed = true
+text = "Enabled"
+
+[node name="FPSLabel" type="Label" parent="ContentArea/VisualPanel"]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.84, 0, 1)
+theme_override_font_sizes/font_size = 28
+text = "FPS CAP"
+
+[node name="FPSContainer" type="HBoxContainer" parent="ContentArea/VisualPanel"]
+layout_mode = 2
+theme_override_constants/separation = 20
+
+[node name="FPSLeft" type="Button" parent="ContentArea/VisualPanel/FPSContainer"]
+custom_minimum_size = Vector2(60, 50)
+layout_mode = 2
+theme_override_font_sizes/font_size = 32
+text = "<"
+
+[node name="FPSLabel" type="Label" parent="ContentArea/VisualPanel/FPSContainer"]
+custom_minimum_size = Vector2(300, 0)
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 24
+text = "60"
+horizontal_alignment = 1
+
+[node name="FPSRight" type="Button" parent="ContentArea/VisualPanel/FPSContainer"]
+custom_minimum_size = Vector2(60, 50)
+layout_mode = 2
+theme_override_font_sizes/font_size = 32
+text = ">"
+
+[node name="ColorblindLabel" type="Label" parent="ContentArea/VisualPanel"]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.84, 0, 1)
+theme_override_font_sizes/font_size = 28
+text = "COLORBLIND MODE"
+
+[node name="ColorblindContainer" type="HBoxContainer" parent="ContentArea/VisualPanel"]
+layout_mode = 2
+theme_override_constants/separation = 20
+
+[node name="ColorblindLeft" type="Button" parent="ContentArea/VisualPanel/ColorblindContainer"]
+custom_minimum_size = Vector2(60, 50)
+layout_mode = 2
+theme_override_font_sizes/font_size = 32
+text = "<"
+
+[node name="ColorblindLabel" type="Label" parent="ContentArea/VisualPanel/ColorblindContainer"]
+custom_minimum_size = Vector2(300, 0)
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 24
+text = "None"
+horizontal_alignment = 1
+
+[node name="ColorblindRight" type="Button" parent="ContentArea/VisualPanel/ColorblindContainer"]
+custom_minimum_size = Vector2(60, 50)
+layout_mode = 2
+theme_override_font_sizes/font_size = 32
+text = ">"
+
+[node name="GameplayPanel" type="VBoxContainer" parent="ContentArea"]
+visible = false
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/separation = 25
+
+[node name="DropAssistLabel" type="Label" parent="ContentArea/GameplayPanel"]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.84, 0, 1)
+theme_override_font_sizes/font_size = 28
+text = "DROP ASSIST (VERTICAL LINE)"
+
+[node name="DropAssistCheckbox" type="CheckBox" parent="ContentArea/GameplayPanel"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 24
+text = "Enabled"
+
+[node name="DropKeyLabel" type="Label" parent="ContentArea/GameplayPanel"]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.84, 0, 1)
+theme_override_font_sizes/font_size = 28
+text = "DROP KEY"
+
+[node name="DropKeyButton" type="Button" parent="ContentArea/GameplayPanel"]
+custom_minimum_size = Vector2(0, 50)
+layout_mode = 2
+theme_override_font_sizes/font_size = 24
+text = "SPACE"
+
+[node name="Powerup1Label" type="Label" parent="ContentArea/GameplayPanel"]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.84, 0, 1)
+theme_override_font_sizes/font_size = 28
+text = "POWERUP SLOT 1"
+
+[node name="Powerup1Button" type="Button" parent="ContentArea/GameplayPanel"]
+custom_minimum_size = Vector2(0, 50)
+layout_mode = 2
+theme_override_font_sizes/font_size = 24
+text = "Q"
+
+[node name="Powerup2Label" type="Label" parent="ContentArea/GameplayPanel"]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.84, 0, 1)
+theme_override_font_sizes/font_size = 28
+text = "POWERUP SLOT 2"
+
+[node name="Powerup2Button" type="Button" parent="ContentArea/GameplayPanel"]
+custom_minimum_size = Vector2(0, 50)
+layout_mode = 2
+theme_override_font_sizes/font_size = 24
+text = "W"
+
+[node name="Powerup3Label" type="Label" parent="ContentArea/GameplayPanel"]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.84, 0, 1)
+theme_override_font_sizes/font_size = 28
+text = "POWERUP SLOT 3"
+
+[node name="Powerup3Button" type="Button" parent="ContentArea/GameplayPanel"]
+custom_minimum_size = Vector2(0, 50)
+layout_mode = 2
+theme_override_font_sizes/font_size = 24
+text = "E"
+
+[node name="StatisticsPanel" type="VBoxContainer" parent="ContentArea"]
+visible = false
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/separation = 15
+
+[node name="BestScoreContainer" type="HBoxContainer" parent="ContentArea/StatisticsPanel"]
+layout_mode = 2
+
+[node name="BestScoreLabel" type="Label" parent="ContentArea/StatisticsPanel/BestScoreContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_colors/font_color = Color(1, 0.84, 0, 1)
+theme_override_font_sizes/font_size = 26
+text = "BEST SCORE:"
+
+[node name="BestScoreValue" type="Label" parent="ContentArea/StatisticsPanel/BestScoreContainer"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 26
+text = "0"
+
+[node name="TotalRunsContainer" type="HBoxContainer" parent="ContentArea/StatisticsPanel"]
+layout_mode = 2
+
+[node name="TotalRunsLabel" type="Label" parent="ContentArea/StatisticsPanel/TotalRunsContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_colors/font_color = Color(1, 0.84, 0, 1)
+theme_override_font_sizes/font_size = 26
+text = "TOTAL RUNS:"
+
+[node name="TotalRunsValue" type="Label" parent="ContentArea/StatisticsPanel/TotalRunsContainer"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 26
+text = "0"
+
+[node name="ClownsDroppedContainer" type="HBoxContainer" parent="ContentArea/StatisticsPanel"]
+layout_mode = 2
+
+[node name="ClownsDroppedLabel" type="Label" parent="ContentArea/StatisticsPanel/ClownsDroppedContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_colors/font_color = Color(1, 0.84, 0, 1)
+theme_override_font_sizes/font_size = 26
+text = "TOTAL CLOWNS DROPPED:"
+
+[node name="ClownsDroppedValue" type="Label" parent="ContentArea/StatisticsPanel/ClownsDroppedContainer"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 26
+text = "0"
+
+[node name="HighestTierContainer" type="HBoxContainer" parent="ContentArea/StatisticsPanel"]
+layout_mode = 2
+
+[node name="HighestTierLabel" type="Label" parent="ContentArea/StatisticsPanel/HighestTierContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_colors/font_color = Color(1, 0.84, 0, 1)
+theme_override_font_sizes/font_size = 26
+text = "HIGHEST TIER CREATED:"
+
+[node name="HighestTierValue" type="Label" parent="ContentArea/StatisticsPanel/HighestTierContainer"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 26
+text = "None"
+
+[node name="CurrencyContainer" type="HBoxContainer" parent="ContentArea/StatisticsPanel"]
+layout_mode = 2
+
+[node name="CurrencyLabel" type="Label" parent="ContentArea/StatisticsPanel/CurrencyContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_colors/font_color = Color(1, 0.84, 0, 1)
+theme_override_font_sizes/font_size = 26
+text = "TOTAL CURRENCY EARNED:"
+
+[node name="CurrencyValue" type="Label" parent="ContentArea/StatisticsPanel/CurrencyContainer"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 26
+text = "0"
+
+[node name="TimePlayedContainer" type="HBoxContainer" parent="ContentArea/StatisticsPanel"]
+layout_mode = 2
+
+[node name="TimePlayedLabel" type="Label" parent="ContentArea/StatisticsPanel/TimePlayedContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_colors/font_color = Color(1, 0.84, 0, 1)
+theme_override_font_sizes/font_size = 26
+text = "TIME PLAYED:"
+
+[node name="TimePlayedValue" type="Label" parent="ContentArea/StatisticsPanel/TimePlayedContainer"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 26
+text = "0h 0m"
+
+[node name="BackButton" type="Button" parent="."]
+layout_mode = 0
+offset_left = 50.0
+offset_top = 600.0
+offset_right = 250.0
+offset_bottom = 660.0
+theme_override_font_sizes/font_size = 28
+text = "BACK"

@@ -1,4 +1,5 @@
 extends Node2D
+class_name GameManager
 
 # Theme manager
 var theme_manager = preload("res://scripts/theme_manager.gd").new()
@@ -241,6 +242,7 @@ func setup_audio():
 	click_sound = AudioStreamPlayer.new()
 	click_sound.stream = load("res://assets/sounds/assets_click.ogg")
 	click_sound.volume_db = 0
+	click_sound.bus = "SFX"  # Assign to SFX bus
 	add_child(click_sound)
 	
 	# Create pop sound players (one for each merge type)
@@ -248,6 +250,7 @@ func setup_audio():
 		var pop_player = AudioStreamPlayer.new()
 		pop_player.stream = load("res://assets/sounds/assets_pop" + str(i) + ".mp3")
 		pop_player.volume_db = 0
+		pop_player.bus = "SFX"  # Assign to SFX bus
 		add_child(pop_player)
 		pop_sounds.append(pop_player)
 	
@@ -411,6 +414,11 @@ func drop_clown():
 	new_clown.global_position = Vector2(drop_x, drop_y)
 	new_clown.freeze = false  # Enable physics
 	
+	# Update statistics (track clowns dropped)
+	var settings = get_node_or_null("/root/SettingsManager")
+	if settings:
+		settings.add_clowns_dropped(1)
+	
 	# TEST MODE: Cycle through all clowns in order
 	if test_mode:
 		test_clown_index += 1
@@ -447,6 +455,11 @@ func merge_clowns(clown1, clown2, merge_pos: Vector2, new_type: int):
 	# Update score label
 	if score_label:
 		score_label.text = str(score)
+	
+	# Update statistics (highest tier)
+	var settings = get_node_or_null("/root/SettingsManager")
+	if settings:
+		settings.update_highest_tier(new_type)
 	
 	# Remove old clowns
 	clown1.queue_free()
@@ -503,6 +516,12 @@ func trigger_game_over():
 	can_drop = false
 	
 	print("Game Over! Final Score: ", score)
+	
+	# Update statistics
+	var settings = get_node_or_null("/root/SettingsManager")
+	if settings:
+		settings.update_best_score(score)
+		settings.increment_total_runs()
 	
 	# ⭐ Upload score to Steam
 	var steam = get_node_or_null("/root/SteamManager")

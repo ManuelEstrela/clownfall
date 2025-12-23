@@ -162,7 +162,31 @@ func _on_settings_pressed():
 		return
 	
 	print("⚙️ Settings button pressed!")
-	print("Settings menu not implemented yet!")
+	is_transitioning = true
+	
+	play_button.disabled = true
+	settings_button.disabled = true
+	exit_button.disabled = true
+	
+	# Fade out and go to settings
+	var fade_duration = 0.5
+	
+	var tween = create_tween()
+	tween.set_parallel(true)
+	tween.tween_property(bgm, "volume_db", -80, fade_duration)
+	
+	var fade_overlay = ColorRect.new()
+	fade_overlay.color = Color(0, 0, 0, 0)
+	fade_overlay.size = get_viewport_rect().size
+	fade_overlay.z_index = 1000
+	add_child(fade_overlay)
+	
+	tween.tween_property(fade_overlay, "color:a", 1.0, fade_duration)
+	
+	await tween.finished
+	
+	print("🎮 Loading settings menu...")
+	get_tree().change_scene_to_file("res://scenes/settings_menu.tscn")
 
 func _on_exit_pressed():
 	if is_transitioning:
