@@ -109,16 +109,17 @@ func setup_audio_panel():
 # ====== VISUAL PANEL SETUP ======
 
 func setup_visual_panel():
-	var screen_left = visual_panel.get_node("ScreenModeLeft")
-	var screen_right = visual_panel.get_node("ScreenModeRight")
-	var screen_label = visual_panel.get_node("ScreenModeLabel")
+	# FIXED: Correct node paths - they're inside containers
+	var screen_left = visual_panel.get_node("ScreenModeContainer/ScreenModeLeft")
+	var screen_right = visual_panel.get_node("ScreenModeContainer/ScreenModeRight")
+	var screen_label = visual_panel.get_node("ScreenModeContainer/ScreenModeLabel")
 	var vsync_checkbox = visual_panel.get_node("VsyncCheckbox")
-	var fps_left = visual_panel.get_node("FPSLeft")
-	var fps_right = visual_panel.get_node("FPSRight")
-	var fps_label = visual_panel.get_node("FPSLabel")
-	var colorblind_left = visual_panel.get_node("ColorblindLeft")
-	var colorblind_right = visual_panel.get_node("ColorblindRight")
-	var colorblind_label = visual_panel.get_node("ColorblindLabel")
+	var fps_left = visual_panel.get_node("FPSContainer/FPSLeft")
+	var fps_right = visual_panel.get_node("FPSContainer/FPSRight")
+	var fps_label = visual_panel.get_node("FPSContainer/FPSLabel")
+	var colorblind_left = visual_panel.get_node("ColorblindContainer/ColorblindLeft")
+	var colorblind_right = visual_panel.get_node("ColorblindContainer/ColorblindRight")
+	var colorblind_label = visual_panel.get_node("ColorblindContainer/ColorblindLabel")
 	
 	# Set initial values
 	screen_label.text = settings.get_screen_mode_name()
@@ -261,19 +262,19 @@ func setup_statistics_panel():
 	update_statistics_display()
 
 func update_statistics_display():
-	statistics_panel.get_node("BestScoreValue").text = str(settings.best_score)
-	statistics_panel.get_node("TotalRunsValue").text = str(settings.total_runs)
-	statistics_panel.get_node("ClownsDroppedValue").text = str(settings.total_clowns_dropped)
+	statistics_panel.get_node("BestScoreContainer/BestScoreValue").text = str(settings.best_score)
+	statistics_panel.get_node("TotalRunsContainer/TotalRunsValue").text = str(settings.total_runs)
+	statistics_panel.get_node("ClownsDroppedContainer/ClownsDroppedValue").text = str(settings.total_clowns_dropped)
 	
 	# Clown name for highest tier
 	var clown_names = ["Tessa", "Twinkles", "Reina", "Osvaldo", "Hazel", "Mumbles", "Sneaky", "Wendy", "Chatty", "Cups", "Kirk"]
 	var tier_text = "None"
 	if settings.highest_tier_created < clown_names.size():
 		tier_text = clown_names[settings.highest_tier_created]
-	statistics_panel.get_node("HighestTierValue").text = tier_text
+	statistics_panel.get_node("HighestTierContainer/HighestTierValue").text = tier_text
 	
-	statistics_panel.get_node("CurrencyValue").text = str(settings.total_currency_earned)
-	statistics_panel.get_node("TimePlayedValue").text = settings.format_time_played()
+	statistics_panel.get_node("CurrencyContainer/CurrencyValue").text = str(settings.total_currency_earned)
+	statistics_panel.get_node("TimePlayedContainer/TimePlayedValue").text = settings.format_time_played()
 
 func _on_back_pressed():
 	# Save settings before leaving
