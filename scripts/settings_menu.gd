@@ -23,7 +23,13 @@ var current_category: String = "audio"
 var listening_for_key: bool = false
 var listening_slot: String = ""  # "drop", "powerup_1", "powerup_2", "powerup_3"
 
+# Track if opened from pause menu
+var opened_from_pause_menu: bool = false
+
 func _ready():
+	# Check if we're in a paused game (opened from pause menu)
+	opened_from_pause_menu = get_tree().paused
+	
 	settings = get_node("/root/SettingsManager")
 	
 	# Connect category buttons
@@ -42,7 +48,14 @@ func _ready():
 	# Show audio panel by default
 	switch_category("audio")
 	
-	print("✅ Settings menu ready")
+	print("✅ Settings menu ready (from pause: ", opened_from_pause_menu, ")")
+
+func _input(event):
+	# If opened from pause menu, ESC closes settings
+	if opened_from_pause_menu and event.is_action_pressed("ui_cancel"):
+		if not listening_for_key:  # Don't close if listening for keybind
+			_on_back_pressed()
+			get_viewport().set_input_as_handled()
 
 func switch_category(category: String):
 	current_category = category
@@ -222,7 +235,7 @@ func update_keybind_button_text(button: Button, key: int):
 	button.text = settings.get_key_name(key)
 	button.modulate = Color.WHITE
 
-func _input(event):
+func _unhandled_input(event):
 	if not listening_for_key:
 		return
 	
@@ -280,5 +293,11 @@ func _on_back_pressed():
 	# Save settings before leaving
 	settings.save_settings()
 	
-	# Go back to main menu
-	get_tree().change_scene_to_file("res://scenes/main_menu.tscn")
+	if opened_from_pause_menu:
+		# Close settings menu and return to pause menu
+		var pause_menu = get_parent()
+		if pause_menu and pause_menu.has_method("close_settings_menu"):
+			pause_menu.close_settings_menu()
+	else:
+		# Go back to main menu (normal behavior)
+		get_tree().change_scene_to_file("res://scenes/main_menu.tscn")

@@ -1,9 +1,10 @@
-[gd_scene load_steps=8 format=3 uid="uid://v4q63ypq1ryl"]
+[gd_scene load_steps=9 format=3 uid="uid://v4q63ypq1ryl"]
 
 [ext_resource type="Script" uid="uid://d263nhwmv5sk3" path="res://scripts/chaotic_manager.gd" id="1_kkdj6"]
 [ext_resource type="Texture2D" uid="uid://bskmjqpsooawm" path="res://assets/images/container.png" id="2_t1pgo"]
 [ext_resource type="PackedScene" uid="uid://b6cgppxwy3dfv" path="res://ui/game_ui.tscn" id="3_p4dp8"]
 [ext_resource type="PackedScene" uid="uid://cx3qn0kp8aokt" path="res://ui/leaderboard_ui.tscn" id="4_sro1i"]
+[ext_resource type="PackedScene" uid="uid://cgahyj7qreci3" path="res://scenes/pause_menu.tscn" id="5_t1pgo"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_47u71"]
 size = Vector2(39, 1273)
@@ -51,3 +52,5 @@ offset_right = 40.0
 offset_bottom = 40.0
 
 [node name="Control" parent="Control" instance=ExtResource("4_sro1i")]
+
+[node name="PauseMenu" parent="." instance=ExtResource("5_t1pgo")]
