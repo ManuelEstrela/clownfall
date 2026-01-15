@@ -7,6 +7,7 @@ var clown_size: float = 35.0
 var clown_score: int = 1
 var can_merge: bool = true
 var is_merging: bool = false
+var just_spawned: bool = true  # NEW: Prevent immediate merging on spawn
 
 # References
 @onready var sprite: Sprite2D = $Sprite
@@ -80,9 +81,17 @@ func _ready():
 	body_entered.connect(_on_body_entered)
 	contact_monitor = true
 	max_contacts_reported = 4
+	
+	# NEW: Allow merging after a short delay to prevent immediate collision issues
+	await get_tree().create_timer(0.15).timeout
+	just_spawned = false
 
 func _on_body_entered(body):
 	if not body is ClownBall:
+		return
+	
+	# NEW: Don't merge if just spawned (prevents instant merge on drop)
+	if just_spawned or body.just_spawned:
 		return
 	
 	if is_merging or not can_merge:

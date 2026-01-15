@@ -35,6 +35,10 @@ var rushtime_drop_interval: float = 1  # Drop a ball every 0.5 seconds
 # Lights out overlay
 var lights_out_overlay: ColorRect = null
 var flashlight_circle: ColorRect = null
+var spotlight_pos: Vector2 = Vector2(0.5, 0.5)  # Current spotlight position (normalized 0-1)
+var spotlight_target: Vector2 = Vector2(0.5, 0.5)  # Target position for spotlight
+var spotlight_move_timer: float = 0.0  # Time until next target change
+var spotlight_move_interval: float = 0.8  # How often to pick new target (seconds)
 
 # Original gravity
 var original_gravity: float = 1200.0
@@ -128,12 +132,48 @@ func setup_lights_out():
 	lights_out_layer.layer = 999  # Very high layer to be above leaderboard CanvasLayer
 	add_child(lights_out_layer)
 	
-	# Create dark overlay in the high-layer CanvasLayer
+	# Create dark overlay in the high-layer CanvasLayer (DARKER NOW)
 	lights_out_overlay = ColorRect.new()
-	lights_out_overlay.color = Color(0, 0, 0, 0.95)
+	lights_out_overlay.color = Color(0, 0, 0, 0.98)  # Almost completely black (was 0.95)
 	lights_out_overlay.size = get_viewport_rect().size
 	lights_out_overlay.visible = false
 	lights_out_layer.add_child(lights_out_overlay)
+	
+	# Create spotlight circle (cutout effect using a shader)
+	flashlight_circle = ColorRect.new()
+	flashlight_circle.size = get_viewport_rect().size
+	flashlight_circle.visible = false
+	
+	# Shader for spotlight effect
+	var shader_code = """
+shader_type canvas_item;
+
+uniform vec2 spotlight_pos = vec2(0.5, 0.5); // Normalized position (0-1)
+uniform float spotlight_radius = 150.0;
+
+void fragment() {
+	vec2 screen_size = 1.0 / SCREEN_PIXEL_SIZE;
+	vec2 pixel_pos = FRAGCOORD.xy;
+	vec2 spotlight_pixel = spotlight_pos * screen_size;
+	
+	float dist = distance(pixel_pos, spotlight_pixel);
+	
+	// Create smooth spotlight with falloff
+	float spotlight = smoothstep(spotlight_radius + 50.0, spotlight_radius - 20.0, dist);
+	
+	// Black everywhere except spotlight
+	COLOR = vec4(0.0, 0.0, 0.0, 1.0 - spotlight);
+}
+"""
+	
+	var shader = Shader.new()
+	shader.code = shader_code
+	
+	var material = ShaderMaterial.new()
+	material.shader = shader
+	
+	flashlight_circle.material = material
+	lights_out_layer.add_child(flashlight_circle)
 
 func _process(delta):
 	super._process(delta)  # Call parent _process()
@@ -236,13 +276,13 @@ func start_zero_gravity():
 	is_zero_gravity_active = true
 	zero_gravity_timer = zero_gravity_duration
 	
-	# Set gravity to near-zero for all existing balls AND give them slight upward push
+	# Set gravity to near-zero for all existing balls AND give them gentler upward push
 	for child in get_children():
 		if child is ClownBall:
 			child.gravity_scale = 0.1
-			child.apply_central_impulse(Vector2(0, -100))  # Small upward push
+			child.apply_central_impulse(Vector2(0, -30))  # Gentler upward push
 	
-	# Modify global gravity
+	# Modify global gravity to allow slow fall
 	PhysicsServer2D.area_set_param(get_viewport().find_world_2d().space, PhysicsServer2D.AREA_PARAM_GRAVITY, 100.0)
 	
 	print("ZERO GRAVITY STARTED!")
@@ -271,6 +311,13 @@ func start_lights_out():
 	is_lights_out_active = true
 	lights_out_timer = lights_out_duration
 	lights_out_overlay.visible = true
+	flashlight_circle.visible = true
+	
+	# Initialize spotlight at center
+	spotlight_pos = Vector2(0.5, 0.5)
+	spotlight_target = Vector2(0.5, 0.5)
+	spotlight_move_timer = 0.0
+	
 	print("LIGHTS OUT STARTED!")
 
 func update_lights_out(delta: float):
@@ -278,12 +325,29 @@ func update_lights_out(delta: float):
 		return
 	
 	lights_out_timer -= delta
+	spotlight_move_timer -= delta
 	
-	# TODO: Add flashlight effect that follows mouse
+	# Pick new random target for spotlight
+	if spotlight_move_timer <= 0:
+		spotlight_move_timer = spotlight_move_interval
+		# Random position within play area (focused on the container area)
+		spotlight_target = Vector2(
+			randf_range(0.3, 0.7),  # Stay more centered horizontally
+			randf_range(0.2, 0.8)   # Cover more vertical area
+		)
+	
+	# Smoothly move spotlight towards target (FAST movement for chaos)
+	var move_speed = 3.5  # Higher = faster movement
+	spotlight_pos = spotlight_pos.lerp(spotlight_target, delta * move_speed)
+	
+	# Update shader with new position
+	if flashlight_circle and flashlight_circle.material:
+		flashlight_circle.material.set_shader_parameter("spotlight_pos", spotlight_pos)
 	
 	if lights_out_timer <= 0:
 		is_lights_out_active = false
 		lights_out_overlay.visible = false
+		flashlight_circle.visible = false
 		event_counting = true  # Start counting to next event
 		print("LIGHTS OUT ENDED")
 
@@ -406,9 +470,10 @@ func merge_clowns(clown1, clown2, merge_pos: Vector2, new_type: int):
 	if is_zero_gravity_active:
 		new_clown.gravity_scale = 0.1
 	
-	# Add some upward impulse for effect
-	await get_tree().create_timer(0.01).timeout
-	new_clown.apply_central_impulse(Vector2(0, -200))
+	# Add upward impulse for effect ONLY if not in zero gravity
+	if not is_zero_gravity_active:
+		await get_tree().create_timer(0.01).timeout
+		new_clown.apply_central_impulse(Vector2(0, -200))
 
 # Override drop_clown to apply zero gravity to new balls
 func drop_clown():
@@ -438,9 +503,9 @@ func drop_clown():
 	# Apply zero gravity if active
 	if is_zero_gravity_active:
 		new_clown.gravity_scale = 0.1
-		# Give it a tiny upward float when dropped during zero gravity
+		# Give strong initial downward push to bypass danger zone quickly
 		await get_tree().create_timer(0.01).timeout
-		new_clown.apply_central_impulse(Vector2(0, -50))
+		new_clown.apply_central_impulse(Vector2(0, 400))  # Strong downward push
 	
 	# TEST MODE: Cycle through all clowns in order
 	if test_mode:

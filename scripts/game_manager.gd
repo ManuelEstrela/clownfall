@@ -336,18 +336,21 @@ func add_clown_cycle_decoration(viewport_size: Vector2, container_scale: float):
 	print("🎡 Clown cycle decoration added at: ", clown_cycle_sprite.global_position)
 
 func _input(event):
-	if game_over or not can_drop:
+	if game_over:
 		return
 	
-	# Mouse movement
+	# Mouse movement - van ALWAYS follows mouse (even during drop delay)
 	if event is InputEventMouseMotion:
-		if preview_clown and van_sprite:
+		if van_sprite:
 			var mouse_x = get_viewport().get_mouse_position().x
 			var clamped_x = clampf(mouse_x, play_area_left, play_area_right)
 			
-			# Update both van and preview position
+			# Update van position
 			van_sprite.global_position.x = clamped_x
-			preview_clown.global_position.x = clamped_x
+			
+			# Update preview position if it exists
+			if preview_clown:
+				preview_clown.global_position.x = clamped_x
 	
 	# Click to drop
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
@@ -372,6 +375,7 @@ func spawn_preview():
 	add_child(preview_clown)  # Add to tree FIRST
 	preview_clown.setup(current_clown_type)  # Then setup
 	preview_clown.freeze = true  # No physics yet
+	preview_clown.can_merge = false  # IMPORTANT: Preview cannot merge!
 	preview_clown.modulate.a = 0.9  # Slightly transparent
 	preview_clown.z_index = 50  # Below van (van is z_index 100)
 	preview_clown.global_position = Vector2(start_x, start_y)
@@ -413,6 +417,7 @@ func drop_clown():
 	new_clown.setup(drop_type)
 	new_clown.global_position = Vector2(drop_x, drop_y)
 	new_clown.freeze = false  # Enable physics
+	new_clown.can_merge = true  # NOW it can merge!
 	
 	# Update statistics (track clowns dropped)
 	var settings = get_node_or_null("/root/SettingsManager")
