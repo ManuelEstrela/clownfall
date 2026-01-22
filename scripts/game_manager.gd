@@ -70,6 +70,7 @@ var next_clown_sprite: Sprite2D = null
 
 # Audio players
 var click_sound: AudioStreamPlayer = null
+var game_over_sound: AudioStreamPlayer = null
 var pop_sounds: Array[AudioStreamPlayer] = []
 
 # Boundaries (calculated dynamically)
@@ -244,6 +245,13 @@ func setup_audio():
 	click_sound.volume_db = 0
 	click_sound.bus = "SFX"  # Assign to SFX bus
 	add_child(click_sound)
+	
+		# Create game over sound player
+	game_over_sound = AudioStreamPlayer.new()
+	game_over_sound.stream = load("res://assets/sounds/game_over.mp3")
+	game_over_sound.volume_db = 0
+	game_over_sound.bus = "SFX"
+	add_child(game_over_sound)
 	
 	# Create pop sound players (one for each merge type)
 	for i in range(11):  # 11 clowns means 10 possible merges (0-9)
@@ -519,6 +527,10 @@ func trigger_game_over():
 		
 	game_over = true
 	can_drop = false
+	
+		# Play game over sound
+	if game_over_sound:
+		game_over_sound.play()
 	
 	print("Game Over! Final Score: ", score)
 	

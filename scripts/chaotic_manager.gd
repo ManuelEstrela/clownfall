@@ -1,9 +1,9 @@
 extends "res://scripts/game_manager.gd"
 
 # ====== CHAOTIC MODE SETTINGS ======
-var event_interval: float = 10.0  # Events every 10 seconds (starts counting after previous event ends)
+var event_interval: float = 10.0
 var event_timer: float = 0.0
-var event_counting: bool = true  # Whether we're counting towards next event
+var event_counting: bool = true
 
 # Event durations
 var rushtime_duration: float = 7.0
@@ -30,15 +30,15 @@ var extra_life_timer: float = 0.0
 
 # Rushtime variables
 var rushtime_drop_timer: float = 0.0
-var rushtime_drop_interval: float = 1  # Drop a ball every 0.5 seconds
+var rushtime_drop_interval: float = 1
 
 # Lights out overlay
 var lights_out_overlay: ColorRect = null
 var flashlight_circle: ColorRect = null
-var spotlight_pos: Vector2 = Vector2(0.5, 0.5)  # Current spotlight position (normalized 0-1)
-var spotlight_target: Vector2 = Vector2(0.5, 0.5)  # Target position for spotlight
-var spotlight_move_timer: float = 0.0  # Time until next target change
-var spotlight_move_interval: float = 0.8  # How often to pick new target (seconds)
+var spotlight_pos: Vector2 = Vector2(0.5, 0.5)
+var spotlight_target: Vector2 = Vector2(0.5, 0.5)
+var spotlight_move_timer: float = 0.0
+var spotlight_move_interval: float = 0.8
 
 # Original gravity
 var original_gravity: float = 1200.0
@@ -59,12 +59,21 @@ var powerup_cooldown_duration: float = 20.0
 # UI for powerups and events
 var powerup_container: HBoxContainer = null
 var event_label: Label = null
-var event_timer_label: Label = null  # Shows countdown to next event
+var event_timer_label: Label = null
+
+# ====== CHAOS SOUND EFFECTS ======
+var gravity_event_sound: AudioStreamPlayer = null
+var lightsout_event_sound: AudioStreamPlayer = null
+var lightsout_start_sound: AudioStreamPlayer = null
+var rushtime_event_sound: AudioStreamPlayer = null
 
 func _ready():
-	super._ready()  # Call parent _ready()
+	super._ready()
 	
 	print("CHAOTIC MODE INITIALIZED!")
+	
+	# Setup chaos sounds
+	setup_chaos_sounds()
 	
 	# Setup chaotic UI
 	setup_chaotic_ui()
@@ -72,20 +81,49 @@ func _ready():
 	# Setup lights out overlay (hidden by default)
 	setup_lights_out()
 
+func setup_chaos_sounds():
+	# Gravity event sound (loops during zero gravity)
+	gravity_event_sound = AudioStreamPlayer.new()
+	gravity_event_sound.stream = load("res://assets/sounds/chaos/chaos_gravity_event.mp3")
+	gravity_event_sound.volume_db = 0
+	gravity_event_sound.bus = "SFX"
+	add_child(gravity_event_sound)
+	
+	# Lights out event sound (loops during lights out)
+	lightsout_event_sound = AudioStreamPlayer.new()
+	lightsout_event_sound.stream = load("res://assets/sounds/chaos/chaos_lightsout_event.mp3")
+	lightsout_event_sound.volume_db = 0
+	lightsout_event_sound.bus = "SFX"
+	add_child(lightsout_event_sound)
+	
+	# Lights out start sound (plays once when event starts)
+	lightsout_start_sound = AudioStreamPlayer.new()
+	lightsout_start_sound.stream = load("res://assets/sounds/chaos/chaos_lightsout_start.mp3")
+	lightsout_start_sound.volume_db = 0
+	lightsout_start_sound.bus = "SFX"
+	add_child(lightsout_start_sound)
+	
+	# Rushtime event sound (loops during rushtime)
+	rushtime_event_sound = AudioStreamPlayer.new()
+	rushtime_event_sound.stream = load("res://assets/sounds/chaos/chaos_rushtime_event.mp3")
+	rushtime_event_sound.volume_db = 0
+	rushtime_event_sound.bus = "SFX"
+	add_child(rushtime_event_sound)
+	
+	print("✅ Chaos sounds loaded!")
+
 func setup_chaotic_ui():
-	# Create powerup UI container
+	# [Rest of the UI setup code remains the same]
 	powerup_container = HBoxContainer.new()
 	powerup_container.z_index = 250
 	add_child(powerup_container)
 	powerup_container.position = Vector2(400, 50)
-	powerup_container.add_theme_constant_override("separation", 20)  # Add spacing between buttons
+	powerup_container.add_theme_constant_override("separation", 20)
 	
-	# Create powerup buttons
 	create_powerup_button("Q - 2X Points", "double_points")
 	create_powerup_button("W - Shuffle", "shuffle")
 	create_powerup_button("E - Extra Life", "extra_life")
 	
-	# Create event notification label
 	event_label = Label.new()
 	event_label.z_index = 250
 	add_child(event_label)
@@ -98,7 +136,6 @@ func setup_chaotic_ui():
 	event_label.size = Vector2(400, 50)
 	event_label.visible = false
 	
-	# Create event timer label (countdown to next event)
 	event_timer_label = Label.new()
 	event_timer_label.z_index = 250
 	add_child(event_timer_label)
@@ -127,28 +164,25 @@ func create_powerup_button(label_text: String, powerup_name: String):
 	label.set_meta("button_bg", button_bg)
 
 func setup_lights_out():
-	# Create a CanvasLayer for the lights out overlay (so it's above everything including leaderboard)
+	# [Lights out setup code remains the same...]
 	var lights_out_layer = CanvasLayer.new()
-	lights_out_layer.layer = 999  # Very high layer to be above leaderboard CanvasLayer
+	lights_out_layer.layer = 999
 	add_child(lights_out_layer)
 	
-	# Create dark overlay in the high-layer CanvasLayer (DARKER NOW)
 	lights_out_overlay = ColorRect.new()
-	lights_out_overlay.color = Color(0, 0, 0, 0.98)  # Almost completely black (was 0.95)
+	lights_out_overlay.color = Color(0, 0, 0, 0.98)
 	lights_out_overlay.size = get_viewport_rect().size
 	lights_out_overlay.visible = false
 	lights_out_layer.add_child(lights_out_overlay)
 	
-	# Create spotlight circle (cutout effect using a shader)
 	flashlight_circle = ColorRect.new()
 	flashlight_circle.size = get_viewport_rect().size
 	flashlight_circle.visible = false
 	
-	# Shader for spotlight effect
 	var shader_code = """
 shader_type canvas_item;
 
-uniform vec2 spotlight_pos = vec2(0.5, 0.5); // Normalized position (0-1)
+uniform vec2 spotlight_pos = vec2(0.5, 0.5);
 uniform float spotlight_radius = 150.0;
 
 void fragment() {
@@ -157,11 +191,8 @@ void fragment() {
 	vec2 spotlight_pixel = spotlight_pos * screen_size;
 	
 	float dist = distance(pixel_pos, spotlight_pixel);
-	
-	// Create smooth spotlight with falloff
 	float spotlight = smoothstep(spotlight_radius + 50.0, spotlight_radius - 20.0, dist);
 	
-	// Black everywhere except spotlight
 	COLOR = vec4(0.0, 0.0, 0.0, 1.0 - spotlight);
 }
 """
@@ -176,44 +207,39 @@ void fragment() {
 	lights_out_layer.add_child(flashlight_circle)
 
 func _process(delta):
-	super._process(delta)  # Call parent _process()
+	super._process(delta)
 	
 	if game_over:
 		return
 	
-	# Update event timer (only when event_counting is true)
 	if event_counting:
 		event_timer += delta
 		if event_timer >= event_interval:
 			event_timer = 0.0
-			event_counting = false  # Stop counting until event finishes
+			event_counting = false
 			trigger_random_event()
 		else:
-			# Update timer display
 			var time_left = event_interval - event_timer
 			event_timer_label.text = "Next Event: " + str(int(ceil(time_left))) + "s"
 	else:
 		event_timer_label.text = "Event Active!"
 	
-	# Update active effects
 	update_rushtime(delta)
 	update_zero_gravity(delta)
 	update_lights_out(delta)
 	update_double_points(delta)
 	update_extra_life(delta)
 	
-	# Update powerup cooldowns
 	for powerup in powerup_cooldowns.keys():
 		if powerup_cooldowns[powerup] > 0:
 			powerup_cooldowns[powerup] -= delta
 
 func _input(event):
-	super._input(event)  # Call parent _input()
+	super._input(event)
 	
 	if game_over:
 		return
 	
-	# Powerup activation keys
 	if event is InputEventKey and event.pressed and not event.echo:
 		match event.keycode:
 			KEY_Q:
@@ -253,6 +279,11 @@ func start_rushtime():
 	is_rushtime_active = true
 	rushtime_timer = rushtime_duration
 	rushtime_drop_timer = 0.0
+	
+	# Play rushtime sound (looping)
+	if rushtime_event_sound:
+		rushtime_event_sound.play()
+	
 	print("RUSHTIME STARTED!")
 
 func update_rushtime(delta: float):
@@ -262,28 +293,34 @@ func update_rushtime(delta: float):
 	rushtime_timer -= delta
 	rushtime_drop_timer -= delta
 	
-	# Auto-drop balls
 	if rushtime_drop_timer <= 0:
 		rushtime_drop_timer = rushtime_drop_interval
-		drop_clown()  # Call parent drop function
+		drop_clown()
 	
 	if rushtime_timer <= 0:
 		is_rushtime_active = false
-		event_counting = true  # Start counting to next event
+		event_counting = true
+		
+		# Stop rushtime sound
+		if rushtime_event_sound:
+			rushtime_event_sound.stop()
+		
 		print("RUSHTIME ENDED")
 
 func start_zero_gravity():
 	is_zero_gravity_active = true
 	zero_gravity_timer = zero_gravity_duration
 	
-	# Set gravity to near-zero for all existing balls AND give them gentler upward push
 	for child in get_children():
 		if child is ClownBall:
 			child.gravity_scale = 0.1
-			child.apply_central_impulse(Vector2(0, -30))  # Gentler upward push
+			child.apply_central_impulse(Vector2(0, -30))
 	
-	# Modify global gravity to allow slow fall
 	PhysicsServer2D.area_set_param(get_viewport().find_world_2d().space, PhysicsServer2D.AREA_PARAM_GRAVITY, 100.0)
+	
+	# Play gravity sound (looping)
+	if gravity_event_sound:
+		gravity_event_sound.play()
 	
 	print("ZERO GRAVITY STARTED!")
 
@@ -295,15 +332,17 @@ func update_zero_gravity(delta: float):
 	
 	if zero_gravity_timer <= 0:
 		is_zero_gravity_active = false
-		event_counting = true  # Start counting to next event
+		event_counting = true
 		
-		# Restore gravity for all balls
 		for child in get_children():
 			if child is ClownBall:
 				child.gravity_scale = 1.0
 		
-		# Restore global gravity
 		PhysicsServer2D.area_set_param(get_viewport().find_world_2d().space, PhysicsServer2D.AREA_PARAM_GRAVITY, original_gravity)
+		
+		# Stop gravity sound
+		if gravity_event_sound:
+			gravity_event_sound.stop()
 		
 		print("ZERO GRAVITY ENDED")
 
@@ -313,10 +352,17 @@ func start_lights_out():
 	lights_out_overlay.visible = true
 	flashlight_circle.visible = true
 	
-	# Initialize spotlight at center
 	spotlight_pos = Vector2(0.5, 0.5)
 	spotlight_target = Vector2(0.5, 0.5)
 	spotlight_move_timer = 0.0
+	
+	# Play start sound (one-shot)
+	if lightsout_start_sound:
+		lightsout_start_sound.play()
+	
+	# Play looping event sound
+	if lightsout_event_sound:
+		lightsout_event_sound.play()
 	
 	print("LIGHTS OUT STARTED!")
 
@@ -327,20 +373,16 @@ func update_lights_out(delta: float):
 	lights_out_timer -= delta
 	spotlight_move_timer -= delta
 	
-	# Pick new random target for spotlight
 	if spotlight_move_timer <= 0:
 		spotlight_move_timer = spotlight_move_interval
-		# Random position within play area (focused on the container area)
 		spotlight_target = Vector2(
-			randf_range(0.3, 0.7),  # Stay more centered horizontally
-			randf_range(0.2, 0.8)   # Cover more vertical area
+			randf_range(0.3, 0.7),
+			randf_range(0.2, 0.8)
 		)
 	
-	# Smoothly move spotlight towards target (FAST movement for chaos)
-	var move_speed = 3.5  # Higher = faster movement
+	var move_speed = 3.5
 	spotlight_pos = spotlight_pos.lerp(spotlight_target, delta * move_speed)
 	
-	# Update shader with new position
 	if flashlight_circle and flashlight_circle.material:
 		flashlight_circle.material.set_shader_parameter("spotlight_pos", spotlight_pos)
 	
@@ -348,13 +390,17 @@ func update_lights_out(delta: float):
 		is_lights_out_active = false
 		lights_out_overlay.visible = false
 		flashlight_circle.visible = false
-		event_counting = true  # Start counting to next event
+		event_counting = true
+		
+		# Stop lights out sound
+		if lightsout_event_sound:
+			lightsout_event_sound.stop()
+		
 		print("LIGHTS OUT ENDED")
 
 # ========== POWERUPS ==========
 
 func activate_powerup(powerup_name: String):
-	# Check if already used
 	if powerup_used[powerup_name]:
 		print("Powerup already used: ", powerup_name)
 		return
@@ -366,7 +412,6 @@ func activate_powerup(powerup_name: String):
 	print("Activating powerup: ", powerup_name)
 	powerup_used[powerup_name] = true
 	
-	# Darken the powerup button
 	darken_powerup_button(powerup_name)
 	
 	match powerup_name:
@@ -378,13 +423,12 @@ func activate_powerup(powerup_name: String):
 			start_extra_life()
 
 func darken_powerup_button(powerup_name: String):
-	# Find and darken the corresponding button
 	for child in powerup_container.get_children():
 		if child is ColorRect:
 			var label = child.get_child(0)
 			if label and label.get_meta("powerup_name") == powerup_name:
-				child.color = Color(0.1, 0.1, 0.15, 0.5)  # Much darker
-				label.add_theme_color_override("font_color", Color(0.5, 0.5, 0.5))  # Gray text
+				child.color = Color(0.1, 0.1, 0.15, 0.5)
+				label.add_theme_color_override("font_color", Color(0.5, 0.5, 0.5))
 				print("Darkened powerup button: ", powerup_name)
 
 func start_double_points():
@@ -407,7 +451,6 @@ func do_shuffle():
 	current_clown_type = next_clown_type
 	next_clown_type = temp
 	
-	# Update preview
 	if preview_clown:
 		preview_clown.queue_free()
 		spawn_preview()
@@ -430,16 +473,13 @@ func update_extra_life(delta: float):
 		is_extra_life_active = false
 		print("EXTRA LIFE ENDED")
 
-# Override merge_clowns to apply double points
 func merge_clowns(clown1, clown2, merge_pos: Vector2, new_type: int):
 	print("Merging! Type: ", new_type)
 	
-	# Play pop sound for this merge
 	var merge_sound_index = clown1.clown_type
 	if merge_sound_index < pop_sounds.size():
 		pop_sounds[merge_sound_index].play()
 	
-	# Add score (with double points if active)
 	var points = ClownBallScript.CLOWNS[new_type].score
 	if is_double_points_active:
 		points *= 2
@@ -448,66 +488,53 @@ func merge_clowns(clown1, clown2, merge_pos: Vector2, new_type: int):
 	score += points
 	score_changed.emit(score)
 	
-	# Update score label
 	if score_label:
 		score_label.text = str(score)
 	
-	# Remove old clowns
 	clown1.queue_free()
 	clown2.queue_free()
 	
-	# Small delay before creating new clown
 	await get_tree().create_timer(0.05).timeout
 	
-	# Create new merged clown
 	var new_clown = ClownBallScene.instantiate()
 	add_child(new_clown)
 	new_clown.setup(new_type)
 	new_clown.global_position = merge_pos
 	new_clown.freeze = false
 	
-	# Apply zero gravity if active
 	if is_zero_gravity_active:
 		new_clown.gravity_scale = 0.1
 	
-	# Add upward impulse for effect ONLY if not in zero gravity
 	if not is_zero_gravity_active:
 		await get_tree().create_timer(0.01).timeout
 		new_clown.apply_central_impulse(Vector2(0, -200))
 
-# Override drop_clown to apply zero gravity to new balls
 func drop_clown():
 	if not preview_clown or not can_drop or game_over:
 		return
 	
 	can_drop = false
 	
-	# Play click sound
 	if click_sound:
 		click_sound.play()
 	
 	var drop_x = preview_clown.global_position.x
 	var drop_type = current_clown_type
 	
-	# Remove preview
 	preview_clown.queue_free()
 	preview_clown = null
 	
-	# Create physics-enabled clown
 	var new_clown = ClownBallScene.instantiate()
 	add_child(new_clown)
 	new_clown.setup(drop_type)
 	new_clown.global_position = Vector2(drop_x, drop_y)
-	new_clown.freeze = false  # Enable physics
+	new_clown.freeze = false
 	
-	# Apply zero gravity if active
 	if is_zero_gravity_active:
 		new_clown.gravity_scale = 0.1
-		# Give strong initial downward push to bypass danger zone quickly
 		await get_tree().create_timer(0.01).timeout
-		new_clown.apply_central_impulse(Vector2(0, 400))  # Strong downward push
+		new_clown.apply_central_impulse(Vector2(0, 400))
 	
-	# TEST MODE: Cycle through all clowns in order
 	if test_mode:
 		test_clown_index += 1
 		if test_clown_index >= ClownBallScript.CLOWNS.size():
@@ -515,23 +542,18 @@ func drop_clown():
 		current_clown_type = test_clown_index
 		next_clown_type = (test_clown_index + 1) % ClownBallScript.CLOWNS.size()
 	else:
-		# NORMAL MODE
 		current_clown_type = next_clown_type
 		next_clown_type = randi() % min(5, current_clown_type + 2)
 	
 	update_next_preview()
 	
-	# Spawn new preview after delay
 	await get_tree().create_timer(0.5).timeout
 	if not game_over:
 		can_drop = true
 		spawn_preview()
 
-# Override check_danger_zone to account for extra life
 func check_danger_zone(delta: float):
 	if is_extra_life_active:
-		# Extra life active - don't trigger game over
 		return
 	
-	# Call parent function
 	super.check_danger_zone(delta)

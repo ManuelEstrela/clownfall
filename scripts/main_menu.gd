@@ -56,6 +56,9 @@ func _ready():
 	# Add hover effects
 	setup_button_hover_effects()
 	
+		# ✨ ADD THIS LINE:
+	setup_button_sounds()
+	
 	buttons_initialized = true
 	print("=== Main Menu Ready ===")
 
@@ -199,3 +202,29 @@ func _on_exit_pressed():
 	await tween.finished
 	
 	get_tree().quit()
+	
+
+func setup_button_sounds():
+	# Create hover sound
+	var hover_sound = AudioStreamPlayer.new()
+	hover_sound.stream = load("res://assets/sounds/button_hover.mp3")
+	hover_sound.volume_db = -5  # Quieter
+	hover_sound.bus = "SFX"
+	add_child(hover_sound)
+	
+	# Create click sound
+	var click_sound = AudioStreamPlayer.new()
+	click_sound.stream = load("res://assets/sounds/button_click.mp3")
+	click_sound.volume_db = 0
+	click_sound.bus = "SFX"
+	add_child(click_sound)
+	
+	# Connect to all buttons
+	play_button.mouse_entered.connect(func(): hover_sound.play())
+	play_button.pressed.connect(func(): click_sound.play())
+	
+	settings_button.mouse_entered.connect(func(): hover_sound.play())
+	settings_button.pressed.connect(func(): click_sound.play())
+	
+	exit_button.mouse_entered.connect(func(): hover_sound.play())
+	exit_button.pressed.connect(func(): click_sound.play())
