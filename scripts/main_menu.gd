@@ -44,7 +44,7 @@ func _ready():
 	load_button_texture(exit_button, "res://assets/images/button_exit.png")
 	
 	# Load and play background music
-	var music = load("res://assets/sounds/landing_bgm.wav")
+	var music = load("res://assets/sounds/landing_bgm_2.mp3")
 	if music:
 		bgm.stream = music
 		bgm.volume_db = 0

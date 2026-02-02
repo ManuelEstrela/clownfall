@@ -64,10 +64,10 @@ func setup(type: int):
 	
 	# Physics properties
 	physics_material_override = PhysicsMaterial.new()
-	physics_material_override.friction = 0.8
-	physics_material_override.bounce = 0.35
-	linear_damp = 0.1
-	angular_damp = 1.0
+	physics_material_override.friction = 0.9
+	physics_material_override.bounce = 0.15
+	linear_damp = 0.3
+	angular_damp = 2.0
 	
 	# Set collision layer and mask
 	collision_layer = 1
