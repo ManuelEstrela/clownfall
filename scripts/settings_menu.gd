@@ -23,6 +23,12 @@ var visual_button: Button
 var gameplay_button: Button
 var statistics_button: Button
 
+# Category arrows
+var audio_arrow: TextureRect
+var visual_arrow: TextureRect
+var gameplay_arrow: TextureRect
+var statistics_arrow: TextureRect
+
 # Content panels (left side)
 var content_container: Control
 var audio_panel: VBoxContainer
@@ -30,11 +36,17 @@ var visual_panel: VBoxContainer
 var gameplay_panel: VBoxContainer
 var statistics_panel: VBoxContainer
 
+# Custom font
+var custom_font: Font
+
 func _ready():
 	# Check if we're in a paused game
 	opened_from_pause_menu = get_tree().paused
 	
 	settings = get_node("/root/SettingsManager")
+	
+	# Load custom font
+	custom_font = load("res://assets/font/Clownfall-Regular.ttf")
 	
 	# Create UI
 	setup_background()
@@ -71,38 +83,62 @@ func setup_background():
 
 func setup_category_buttons():
 	# Right panel - Vertical category buttons inside the "CLOWN FALL" frame
-	# Position buttons below the "CLOWN FALL" text
-	
 	var viewport_size = get_viewport_rect().size
 	var button_width = 200
 	var button_height = 50
 	var button_spacing = 20
-	var start_x = viewport_size.x - 298  # Right side positioning
-	var start_y = 302  # Below the CLOWN FALL header
+	var start_x = viewport_size.x - 298
+	var start_y = 302
 	
 	# Audio button
-	audio_button = create_category_button("AUDIO", Vector2(start_x, start_y))
+	var audio_data = create_category_button("AUDIO", Vector2(start_x, start_y), "res://assets/images/settings/audio.png")
+	audio_button = audio_data.button
+	audio_arrow = audio_data.arrow
 	audio_button.pressed.connect(func(): switch_category("audio"))
 	
 	# Visual button
-	visual_button = create_category_button("VISUAL", Vector2(start_x, start_y + button_height + button_spacing))
+	var visual_data = create_category_button("VISUAL", Vector2(start_x, start_y + button_height + button_spacing), "res://assets/images/settings/visuals.png")
+	visual_button = visual_data.button
+	visual_arrow = visual_data.arrow
 	visual_button.pressed.connect(func(): switch_category("visual"))
 	
 	# Gameplay button
-	gameplay_button = create_category_button("GAMEPLAY", Vector2(start_x, start_y + (button_height + button_spacing) * 2))
+	var gameplay_data = create_category_button("GAMEPLAY", Vector2(start_x, start_y + (button_height + button_spacing) * 2), "res://assets/images/settings/gameplay.png")
+	gameplay_button = gameplay_data.button
+	gameplay_arrow = gameplay_data.arrow
 	gameplay_button.pressed.connect(func(): switch_category("gameplay"))
 	
 	# Statistics button
-	statistics_button = create_category_button("STATISTICS", Vector2(start_x, start_y + (button_height + button_spacing) * 3))
+	var statistics_data = create_category_button("STATISTICS", Vector2(start_x, start_y + (button_height + button_spacing) * 3), "res://assets/images/settings/statistics.png")
+	statistics_button = statistics_data.button
+	statistics_arrow = statistics_data.arrow
 	statistics_button.pressed.connect(func(): switch_category("statistics"))
 
-func create_category_button(text: String, pos: Vector2) -> Button:
+func create_category_button(text: String, pos: Vector2, icon_path: String) -> Dictionary:
+	# Create container for button + icon + arrow
+	var container = Control.new()
+	container.position = pos
+	container.custom_minimum_size = Vector2(250, 60)
+	add_child(container)
+	
+	# Add icon
+	var icon = TextureRect.new()
+	icon.texture = load(icon_path)
+	icon.custom_minimum_size = Vector2(40, 40)
+	icon.expand_mode = TextureRect.EXPAND_FIT_WIDTH_PROPORTIONAL
+	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	icon.position = Vector2(10, 10)
+	container.add_child(icon)
+	
+	# Create the button with text
 	var button = Button.new()
 	button.text = text
 	button.custom_minimum_size = Vector2(200, 60)
-	button.position = pos
+	button.position = Vector2(0, 0)
 	
-	# Style
+	# Style with custom font
+	if custom_font:
+		button.add_theme_font_override("font", custom_font)
 	button.add_theme_font_size_override("font_size", 20)
 	button.add_theme_color_override("font_color", Color(1, 1, 1))
 	button.add_theme_color_override("font_hover_color", Color(1, 0.84, 0))
@@ -134,16 +170,27 @@ func create_category_button(text: String, pos: Vector2) -> Button:
 	hover_style.corner_radius_bottom_right = 10
 	button.add_theme_stylebox_override("hover", hover_style)
 	
-	add_child(button)
-	return button
+	container.add_child(button)
+	
+	# Add arrow indicator (hidden by default)
+	var arrow = TextureRect.new()
+	arrow.texture = load("res://assets/images/settings/arrowcategory.png")
+	arrow.custom_minimum_size = Vector2(30, 30)
+	arrow.expand_mode = TextureRect.EXPAND_FIT_WIDTH_PROPORTIONAL
+	arrow.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	arrow.position = Vector2(210, 15)
+	arrow.visible = false
+	container.add_child(arrow)
+	
+	return {"button": button, "arrow": arrow}
 
 func setup_content_panels():
 	# Left panel - Content area
 	var viewport_size = get_viewport_rect().size
 	
 	content_container = Control.new()
-	content_container.position = Vector2(130, 200)  # Inside left frame
-	content_container.size = Vector2(900, 500)  # Fit within left rectangle
+	content_container.position = Vector2(130, 200)
+	content_container.size = Vector2(900, 500)
 	add_child(content_container)
 	
 	# Create all panels (hidden by default)
@@ -172,6 +219,8 @@ func setup_back_button():
 	back_button.text = "BACK"
 	back_button.custom_minimum_size = Vector2(150, 50)
 	back_button.position = Vector2(50, get_viewport_rect().size.y - 100)
+	if custom_font:
+		back_button.add_theme_font_override("font", custom_font)
 	back_button.add_theme_font_size_override("font_size", 24)
 	back_button.add_theme_color_override("font_color", Color(1, 1, 1))
 	back_button.pressed.connect(_on_back_pressed)
@@ -192,52 +241,179 @@ func switch_category(category: String):
 	gameplay_button.modulate = Color.WHITE
 	statistics_button.modulate = Color.WHITE
 	
-	# Show selected panel and highlight button
+	# Hide all arrows
+	audio_arrow.visible = false
+	visual_arrow.visible = false
+	gameplay_arrow.visible = false
+	statistics_arrow.visible = false
+	
+	# Show selected panel, highlight button, and show arrow
 	match category:
 		"audio":
 			audio_panel.visible = true
 			audio_button.modulate = Color(1, 0.84, 0)
+			audio_arrow.visible = true
 		"visual":
 			visual_panel.visible = true
 			visual_button.modulate = Color(1, 0.84, 0)
+			visual_arrow.visible = true
 		"gameplay":
 			gameplay_panel.visible = true
 			gameplay_button.modulate = Color(1, 0.84, 0)
+			gameplay_arrow.visible = true
 		"statistics":
 			statistics_panel.visible = true
 			statistics_button.modulate = Color(1, 0.84, 0)
+			statistics_arrow.visible = true
 			update_statistics_display()
 
 # ====== AUDIO PANEL SETUP ======
 
 func setup_audio_panel():
-	add_setting_header(audio_panel, "MASTER VOLUME")
-	var master_slider = add_slider(audio_panel, settings.master_volume)
+	# Create two-column layout using HBoxContainer
+	var columns_container = HBoxContainer.new()
+	columns_container.add_theme_constant_override("separation", 80)
+	audio_panel.add_child(columns_container)
+	
+	# LEFT COLUMN (Master + SFX)
+	var left_column = VBoxContainer.new()
+	left_column.add_theme_constant_override("separation", 10)
+	columns_container.add_child(left_column)
+	
+	# MASTER
+	var master_label = create_audio_label("MASTER")
+	left_column.add_child(master_label)
+	
+	var master_slider = add_custom_slider(left_column, settings.master_volume)
 	master_slider.value_changed.connect(func(value): 
 		settings.set_master_volume(value)
 		settings.save_settings()
 	)
 	
-	add_setting_header(audio_panel, "MUSIC VOLUME")
-	var music_slider = add_slider(audio_panel, settings.music_volume)
-	music_slider.value_changed.connect(func(value): 
-		settings.set_music_volume(value)
-		settings.save_settings()
-	)
+	# Add spacer
+	left_column.add_child(create_spacer(30))
 	
-	add_setting_header(audio_panel, "SFX VOLUME")
-	var sfx_slider = add_slider(audio_panel, settings.sfx_volume)
+	# SFX
+	var sfx_label = create_audio_label("SFX")
+	left_column.add_child(sfx_label)
+	
+	var sfx_slider = add_custom_slider(left_column, settings.sfx_volume)
 	sfx_slider.value_changed.connect(func(value): 
 		settings.set_sfx_volume(value)
 		settings.save_settings()
 	)
 	
-	add_setting_header(audio_panel, "MUTE WHEN TABBED OUT")
-	var mute_checkbox = add_checkbox(audio_panel, settings.mute_when_tabbed)
+	# RIGHT COLUMN (Music + Mute When Tab)
+	var right_column = VBoxContainer.new()
+	right_column.add_theme_constant_override("separation", 10)
+	columns_container.add_child(right_column)
+	
+	# MUSIC
+	var music_label = create_audio_label("MUSIC")
+	right_column.add_child(music_label)
+	
+	var music_slider = add_custom_slider(right_column, settings.music_volume)
+	music_slider.value_changed.connect(func(value): 
+		settings.set_music_volume(value)
+		settings.save_settings()
+	)
+	
+	# Add spacer
+	right_column.add_child(create_spacer(30))
+	
+	# MUTE WHEN TAB
+	var mute_container = HBoxContainer.new()
+	mute_container.add_theme_constant_override("separation", 15)
+	right_column.add_child(mute_container)
+	
+	var mute_checkbox = add_custom_checkbox(mute_container, settings.mute_when_tabbed)
 	mute_checkbox.toggled.connect(func(pressed):
 		settings.set_mute_when_tabbed(pressed)
 		settings.save_settings()
 	)
+	
+	var mute_label = create_audio_label("MUTE WHEN TAB")
+	mute_label.add_theme_font_size_override("font_size", 18)
+	mute_container.add_child(mute_label)
+
+func create_audio_label(text: String) -> Label:
+	var label = Label.new()
+	label.text = text
+	if custom_font:
+		label.add_theme_font_override("font", custom_font)
+	label.add_theme_font_size_override("font_size", 24)
+	label.add_theme_color_override("font_color", Color(1, 1, 1))
+	return label
+
+func create_spacer(height: int) -> Control:
+	var spacer = Control.new()
+	spacer.custom_minimum_size = Vector2(0, height)
+	return spacer
+
+func add_custom_slider(parent: Control, initial_value: float) -> HSlider:
+	var slider = HSlider.new()
+	slider.min_value = 0.0
+	slider.max_value = 1.0
+	slider.step = 0.01
+	slider.value = initial_value
+	slider.custom_minimum_size = Vector2(300, 40)
+	
+	# Apply custom textures
+	var slider_texture = load("res://assets/images/settings/volumeslider.png")
+	var knob_texture = load("res://assets/images/settings/volumeknob.png")
+	
+	if slider_texture and knob_texture:
+		# Create StyleBoxTexture for the slider background
+		var slider_style = StyleBoxTexture.new()
+		slider_style.texture = slider_texture
+		
+		# Apply styles
+		slider.add_theme_stylebox_override("slider", slider_style)
+		slider.add_theme_stylebox_override("grabber_area", slider_style)
+		slider.add_theme_stylebox_override("grabber_area_highlight", slider_style)
+		
+		# Apply knob icon
+		slider.add_theme_icon_override("grabber", knob_texture)
+		slider.add_theme_icon_override("grabber_highlight", knob_texture)
+	
+	parent.add_child(slider)
+	return slider
+
+func add_custom_checkbox(parent: Control, initial_state: bool) -> TextureButton:
+	var checkbox = TextureButton.new()
+	checkbox.toggle_mode = true
+	checkbox.button_pressed = initial_state
+	checkbox.custom_minimum_size = Vector2(40, 40)
+	
+	# Load textures
+	var box_texture = load("res://assets/images/settings/box_uncheckmarked.png")
+	var checkmark_texture = load("res://assets/images/settings/checkmark.png")
+	
+	if box_texture and checkmark_texture:
+		# Set box texture for all states
+		checkbox.texture_normal = box_texture
+		checkbox.texture_pressed = box_texture
+		checkbox.texture_hover = box_texture
+		
+		# Add checkmark as a child TextureRect
+		var checkmark = TextureRect.new()
+		checkmark.name = "Checkmark"
+		checkmark.texture = checkmark_texture
+		checkmark.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		checkmark.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		checkmark.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		checkmark.anchor_right = 1.0
+		checkmark.anchor_bottom = 1.0
+		checkmark.visible = initial_state
+		checkbox.add_child(checkmark)
+		
+		# Toggle checkmark visibility when clicked
+		checkbox.toggled.connect(func(pressed):
+			checkmark.visible = pressed
+		)
+	
+	parent.add_child(checkbox)
+	return checkbox
 
 # ====== VISUAL PANEL SETUP ======
 
@@ -407,6 +583,8 @@ func update_statistics_display():
 func add_setting_header(parent: Control, text: String):
 	var label = Label.new()
 	label.text = text
+	if custom_font:
+		label.add_theme_font_override("font", custom_font)
 	label.add_theme_font_size_override("font_size", 22)
 	label.add_theme_color_override("font_color", Color(1, 0.84, 0))
 	parent.add_child(label)
@@ -425,6 +603,8 @@ func add_checkbox(parent: Control, initial_state: bool) -> CheckBox:
 	var checkbox = CheckBox.new()
 	checkbox.text = "Enabled"
 	checkbox.button_pressed = initial_state
+	if custom_font:
+		checkbox.add_theme_font_override("font", custom_font)
 	checkbox.add_theme_font_size_override("font_size", 18)
 	parent.add_child(checkbox)
 	return checkbox
@@ -436,6 +616,8 @@ func add_option_selector(parent: Control, initial_text: String) -> HBoxContainer
 	var left_button = Button.new()
 	left_button.text = "<"
 	left_button.custom_minimum_size = Vector2(50, 40)
+	if custom_font:
+		left_button.add_theme_font_override("font", custom_font)
 	left_button.add_theme_font_size_override("font_size", 24)
 	container.add_child(left_button)
 	
@@ -444,12 +626,16 @@ func add_option_selector(parent: Control, initial_text: String) -> HBoxContainer
 	label.custom_minimum_size = Vector2(200, 40)
 	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	if custom_font:
+		label.add_theme_font_override("font", custom_font)
 	label.add_theme_font_size_override("font_size", 18)
 	container.add_child(label)
 	
 	var right_button = Button.new()
 	right_button.text = ">"
 	right_button.custom_minimum_size = Vector2(50, 40)
+	if custom_font:
+		right_button.add_theme_font_override("font", custom_font)
 	right_button.add_theme_font_size_override("font_size", 24)
 	container.add_child(right_button)
 	
@@ -460,6 +646,8 @@ func add_keybind_button(parent: Control, initial_text: String) -> Button:
 	var button = Button.new()
 	button.text = initial_text
 	button.custom_minimum_size = Vector2(200, 40)
+	if custom_font:
+		button.add_theme_font_override("font", custom_font)
 	button.add_theme_font_size_override("font_size", 18)
 	parent.add_child(button)
 	return button
@@ -471,6 +659,8 @@ func add_stat_row(parent: Control, label_text: String, value_text: String, stat_
 	var label = Label.new()
 	label.text = label_text
 	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	if custom_font:
+		label.add_theme_font_override("font", custom_font)
 	label.add_theme_font_size_override("font_size", 20)
 	label.add_theme_color_override("font_color", Color(1, 0.84, 0))
 	container.add_child(label)
@@ -478,6 +668,8 @@ func add_stat_row(parent: Control, label_text: String, value_text: String, stat_
 	var value = Label.new()
 	value.name = stat_name + "Value"
 	value.text = value_text
+	if custom_font:
+		value.add_theme_font_override("font", custom_font)
 	value.add_theme_font_size_override("font_size", 20)
 	value.add_theme_color_override("font_color", Color(1, 1, 1))
 	container.add_child(value)
