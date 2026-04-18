@@ -37,18 +37,12 @@ var custom_font: Font
 # ══════════════════════════════════════════════════════════════
 
 # ── Right-side nav panel ──────────────────────────────────────
-# NAV_X        : X of the LEFT edge of each button (screen space)
-# NAV_Y_START  : Y of the TOP edge of the FIRST button
-# NAV_BTN_W    : rendered width of each button image
-# NAV_BTN_H    : rendered height of each button image
-# NAV_SPACING  : vertical gap between buttons
-# NAV_ARROW_GAP: pixels between the button's right edge and the arrow centre
 const NAV_X         := 970.0
 const NAV_Y_START   := 318.0
 const NAV_BTN_W     := 185.0
 const NAV_BTN_H     := 48.0
 const NAV_SPACING   := 14.0
-const NAV_ARROW_GAP := -5.0   # arrow sits this far past the button's right edge
+const NAV_ARROW_GAP := -5.0
 
 # ── Left content panel ────────────────────────────────────────
 const PANEL_X       := 55.0
@@ -57,19 +51,28 @@ const PANEL_W       := 880.0
 const PANEL_H       := 480.0
 
 # ── Grid inside left panel ────────────────────────────────────
-const COL_L         := 30.0
-const COL_R         := 460.0
-const ROW_TOP       := 30.0
-const ROW_BOT       := 260.0
-const LABEL_FONT_SZ := 26
-const CTRL_OFFSET_Y := 40.0
+const COL_L         := 65.0
+const COL_R         := 435.0
+const ROW_TOP       := 50.0
+const ROW_BOT       := 250.0
+const LABEL_FONT_SZ := 30
+const CTRL_OFFSET_Y := 48.0
+
+# Slider width — tweak this to resize all sliders at once
+const SLIDER_W      := 280.0
+# Slider track height — tweak to make track thinner/taller
+const SLIDER_H      := 22.0
+# Knob rendered size in pixels (square) — independent of source image size
+const KNOB_SIZE     := 32.0
+# Checkbox size — tweak to resize the mute checkbox
+const CHECKBOX_SIZE := 50.0
 
 # ══════════════════════════════════════════════════════════════
 
 func _ready():
 	opened_from_pause_menu = get_tree().paused
 	settings = get_node("/root/SettingsManager")
-	custom_font = load("res://assets/font/Clownfall-Regular.ttf")
+	custom_font = load("res://assets/fonts/Clownfall-Regular.ttf")
 
 	setup_background()
 	setup_nav_buttons()
@@ -117,15 +120,14 @@ func setup_nav_buttons():
 		var cat = categories[i]
 		var btn = TextureButton.new()
 		btn.texture_normal = load(assets[cat])
-		btn.stretch_mode = TextureButton.STRETCH_KEEP_ASPECT   # left-aligned, not centered
+		btn.stretch_mode = TextureButton.STRETCH_KEEP_ASPECT
 		btn.ignore_texture_size = true
 		btn.custom_minimum_size = Vector2(NAV_BTN_W, NAV_BTN_H)
-		btn.pivot_offset = Vector2(0, NAV_BTN_H / 2.0)         # scale from left-centre
+		btn.pivot_offset = Vector2(0, NAV_BTN_H / 2.0)
 		btn.position = Vector2(NAV_X, NAV_Y_START + i * (NAV_BTN_H + NAV_SPACING))
-		btn.modulate = Color(1, 1, 1, 0.5)   # dim = unselected
+		btn.modulate = Color(1, 1, 1, 0.5)
 		btn.pressed.connect(func(c = cat): switch_category(c))
 
-		# Hover: full opacity + tiny scale up (only if this button is NOT already selected)
 		btn.mouse_entered.connect(func(c = cat, b = btn):
 			if c != current_category:
 				b.modulate = Color(1, 1, 1, 1.0)
@@ -144,17 +146,13 @@ func setup_nav_buttons():
 		add_child(btn)
 		category_buttons[cat] = btn
 
-	# Single arrow Sprite2D — repositioned by switch_category().
-	# centered = true so .position points to the sprite's centre.
-	# X is fixed (right of all buttons); Y follows the selected row.
 	nav_arrow = Sprite2D.new()
 	nav_arrow.texture = load("res://assets/images/settings/arrowcategory.png")
 	nav_arrow.centered = true
 	nav_arrow.z_index = 20
-	nav_arrow.position = _arrow_pos_for_row(0)  # corrected by switch_category("audio")
+	nav_arrow.position = _arrow_pos_for_row(0)
 	add_child(nav_arrow)
 
-# Returns the world-space centre the arrow should sit at for row [i].
 func _arrow_pos_for_row(row_index: int) -> Vector2:
 	var half_w = 16.0
 	if nav_arrow and nav_arrow.texture:
@@ -218,7 +216,6 @@ func switch_category(category: String):
 	gameplay_panel.visible   = false
 	statistics_panel.visible = false
 
-	# Dim and reset scale on all buttons
 	for cat in category_buttons:
 		category_buttons[cat].modulate = Color(1, 1, 1, 0.5)
 		var tw = create_tween()
@@ -238,31 +235,38 @@ func switch_category(category: String):
 			statistics_panel.visible = true
 			update_statistics_display()
 
-	# Selected button: full opacity, normal scale
 	category_buttons[category].modulate = Color(1, 1, 1, 1.0)
 	category_buttons[category].scale = Vector2(1.0, 1.0)
 
-	# Snap arrow to selected row
 	var row_index = row_order.find(category)
 	if nav_arrow and row_index >= 0:
 		nav_arrow.position = _arrow_pos_for_row(row_index)
 
 # ══════════════════════════════════════════════════════════════
 #  AUDIO PANEL
+#  Four-corner layout:
+#    TOP-LEFT    → MASTER  (slider)
+#    TOP-RIGHT   → MUSIC   (slider)
+#    BOT-LEFT    → SFX     (slider)
+#    BOT-RIGHT   → MUTE WHEN TAB (checkbox)
 # ══════════════════════════════════════════════════════════════
 func setup_audio_panel():
+	# TOP-LEFT: Master
 	_place_label(audio_panel, "MASTER", COL_L, ROW_TOP)
 	var master_s = _place_slider(audio_panel, settings.master_volume, COL_L, ROW_TOP + CTRL_OFFSET_Y)
 	master_s.value_changed.connect(func(v): settings.set_master_volume(v); settings.save_settings())
 
-	_place_label(audio_panel, "SFX", COL_L, ROW_BOT)
-	var sfx_s = _place_slider(audio_panel, settings.sfx_volume, COL_L, ROW_BOT + CTRL_OFFSET_Y)
-	sfx_s.value_changed.connect(func(v): settings.set_sfx_volume(v); settings.save_settings())
-
+	# TOP-RIGHT: Music
 	_place_label(audio_panel, "MUSIC", COL_R, ROW_TOP)
 	var music_s = _place_slider(audio_panel, settings.music_volume, COL_R, ROW_TOP + CTRL_OFFSET_Y)
 	music_s.value_changed.connect(func(v): settings.set_music_volume(v); settings.save_settings())
 
+	# BOT-LEFT: SFX
+	_place_label(audio_panel, "SFX", COL_L, ROW_BOT)
+	var sfx_s = _place_slider(audio_panel, settings.sfx_volume, COL_L, ROW_BOT + CTRL_OFFSET_Y)
+	sfx_s.value_changed.connect(func(v): settings.set_sfx_volume(v); settings.save_settings())
+
+	# BOT-RIGHT: Mute When Tab
 	_place_label(audio_panel, "MUTE WHEN TAB", COL_R, ROW_BOT)
 	var mute_cb = _place_checkbox(audio_panel, settings.mute_when_tabbed, COL_R, ROW_BOT + CTRL_OFFSET_Y)
 	mute_cb.toggled.connect(func(p): settings.set_mute_when_tabbed(p); settings.save_settings())
@@ -407,48 +411,96 @@ func _set_stat(stat_name: String, value: String):
 # ══════════════════════════════════════════════════════════════
 #  WIDGET HELPERS
 # ══════════════════════════════════════════════════════════════
+
 func _make_label(text: String, font_size: int) -> Label:
 	var lbl = Label.new()
 	lbl.text = text
-	if custom_font: lbl.add_theme_font_override("font", custom_font)
+	if custom_font:
+		lbl.add_theme_font_override("font", custom_font)
 	lbl.add_theme_font_size_override("font_size", font_size)
-	lbl.add_theme_color_override("font_color", Color(1, 1, 1))
+	lbl.add_theme_color_override("font_color", Color(0.239, 0.337, 0.671))       # #3d56ab
+	lbl.add_theme_color_override("font_outline_color", Color(0.035, 0.098, 0.247)) # #09193f
+	lbl.add_theme_constant_override("outline_size", 6)
 	return lbl
 
 func _place_label(parent: Control, text: String, x: float, y: float) -> Label:
 	var lbl = _make_label(text, LABEL_FONT_SZ)
 	lbl.position = Vector2(x, y)
+	# Give it the same width as the slider so it centers naturally
+	lbl.custom_minimum_size = Vector2(SLIDER_W, 0)
+	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	parent.add_child(lbl)
 	return lbl
 
+# ── Slider ────────────────────────────────────────────────────
+# Renders the track image as a NinePatchRect behind the HSlider,
+# then overlays the HSlider (transparent background) with the
+# star knob texture.  This way the track is always visible.
 func _place_slider(parent: Control, initial: float, x: float, y: float) -> HSlider:
+	var slider_tex = load("res://assets/images/settings/volumeslider.png")
+	var knob_tex   = load("res://assets/images/settings/volumeknob.png")
+
+	# Slot height = knob size so the knob sits flush on the track
+	var slot_h: float = KNOB_SIZE
+
+	# ── Track image — vertically centred inside the knob slot ──
+	if slider_tex:
+		var track_img = TextureRect.new()
+		track_img.texture = slider_tex
+		track_img.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		track_img.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+		track_img.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		track_img.size = Vector2(SLIDER_W, SLIDER_H)
+		# Centre track vertically within the knob slot
+		track_img.position = Vector2(x, y + (slot_h - SLIDER_H) / 2.0)
+		parent.add_child(track_img)
+
+	# ── Scaled knob texture ──
+	# Godot renders icon overrides at native image size, so we
+	# pre-scale the image into a new ImageTexture at KNOB_SIZE px.
+	var scaled_knob: Texture2D = knob_tex
+	if knob_tex:
+		var img = knob_tex.get_image()
+		if img:
+			img.resize(int(KNOB_SIZE), int(KNOB_SIZE), Image.INTERPOLATE_LANCZOS)
+			scaled_knob = ImageTexture.create_from_image(img)
+
+	# ── HSlider (transparent track, scaled knob) ──
 	var slider = HSlider.new()
 	slider.min_value = 0.0
 	slider.max_value = 1.0
 	slider.step      = 0.01
 	slider.value     = initial
-	slider.custom_minimum_size = Vector2(340, 44)
+	slider.custom_minimum_size = Vector2(SLIDER_W, slot_h)
 	slider.position  = Vector2(x, y)
-	var slider_tex = load("res://assets/images/settings/volumeslider.png")
-	var knob_tex   = load("res://assets/images/settings/volumeknob.png")
-	if slider_tex:
-		var sbox = StyleBoxTexture.new()
-		sbox.texture = slider_tex
-		slider.add_theme_stylebox_override("slider",                 sbox)
-		slider.add_theme_stylebox_override("grabber_area",           sbox)
-		slider.add_theme_stylebox_override("grabber_area_highlight", sbox)
-	if knob_tex:
-		slider.add_theme_icon_override("grabber",           knob_tex)
-		slider.add_theme_icon_override("grabber_highlight", knob_tex)
+
+	var invisible_box = StyleBoxEmpty.new()
+	slider.add_theme_stylebox_override("slider",                 invisible_box)
+	slider.add_theme_stylebox_override("grabber_area",           invisible_box)
+	slider.add_theme_stylebox_override("grabber_area_highlight", invisible_box)
+
+	if scaled_knob:
+		slider.add_theme_icon_override("grabber",           scaled_knob)
+		slider.add_theme_icon_override("grabber_highlight", scaled_knob)
+
 	parent.add_child(slider)
 	return slider
 
+# ── Checkbox (TextureButton with checkmark overlay) ───────────
 func _place_checkbox(parent: Control, initial: bool, x: float, y: float) -> TextureButton:
 	var cb = TextureButton.new()
 	cb.toggle_mode    = true
 	cb.button_pressed = initial
-	cb.custom_minimum_size = Vector2(44, 44)
-	cb.position = Vector2(x, y)
+	cb.ignore_texture_size = true
+	cb.stretch_mode = TextureButton.STRETCH_KEEP_ASPECT_CENTERED
+	cb.custom_minimum_size = Vector2(CHECKBOX_SIZE, CHECKBOX_SIZE)
+	# Centre horizontally under the label (label width = SLIDER_W)
+	# Centre vertically to match slider row height
+	cb.position = Vector2(
+		x + (SLIDER_W - CHECKBOX_SIZE) / 2.0,
+		y + (KNOB_SIZE - CHECKBOX_SIZE) / 2.0
+	)
+
 	var box_tex   = load("res://assets/images/settings/box_uncheckmarked.png")
 	var check_tex = load("res://assets/images/settings/checkmark.png")
 	if box_tex:
@@ -470,43 +522,84 @@ func _place_checkbox(parent: Control, initial: bool, x: float, y: float) -> Text
 	parent.add_child(cb)
 	return cb
 
+# ── Selector (< Value >) ──────────────────────────────────────
 func _place_selector(parent: Control, initial_text: String, x: float, y: float) -> Control:
+	var arrow_size := 36.0   # rendered size of each arrow button
+
 	var container = Control.new()
 	container.position = Vector2(x, y)
-	container.custom_minimum_size = Vector2(320, 50)
+	container.custom_minimum_size = Vector2(SLIDER_W, 44)
 
-	var left_btn = Button.new()
+	# Pre-scale arrow images to arrow_size so they match regardless of source dims
+	var left_tex  = _scale_texture("res://assets/images/settings/arrowleft.png",  int(arrow_size))
+	var right_tex = _scale_texture("res://assets/images/settings/arrowright.png", int(arrow_size))
+
+	# LEFT arrow button
+	var left_btn = TextureButton.new()
 	left_btn.name = "Left"
-	left_btn.text = "<"
-	if custom_font: left_btn.add_theme_font_override("font", custom_font)
-	left_btn.add_theme_font_size_override("font_size", 28)
-	left_btn.custom_minimum_size = Vector2(44, 44)
-	left_btn.position = Vector2(0, 0)
-	container.add_child(left_btn)
+	left_btn.ignore_texture_size = true
+	left_btn.stretch_mode = TextureButton.STRETCH_KEEP_ASPECT_CENTERED
+	left_btn.custom_minimum_size = Vector2(arrow_size, arrow_size)
+	left_btn.position = Vector2(0, (44.0 - arrow_size) / 2.0)
+	if left_tex:
+		left_btn.texture_normal = left_tex
+	else:
+		# Fallback plain button
+		var fb = Button.new(); fb.name = "Left"; fb.text = "<"
+		if custom_font: fb.add_theme_font_override("font", custom_font)
+		fb.add_theme_font_size_override("font_size", 28)
+		fb.custom_minimum_size = Vector2(44, 44); fb.position = Vector2(0, 0)
+		container.add_child(fb)
+	if left_tex:
+		container.add_child(left_btn)
 
+	# VALUE label — centred between the two arrows
 	var val_lbl = Label.new()
 	val_lbl.name = "ValueLabel"
 	val_lbl.text = initial_text
 	if custom_font: val_lbl.add_theme_font_override("font", custom_font)
 	val_lbl.add_theme_font_size_override("font_size", 22)
+	val_lbl.add_theme_color_override("font_color", Color(1, 1, 1))
 	val_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	val_lbl.vertical_alignment   = VERTICAL_ALIGNMENT_CENTER
-	val_lbl.custom_minimum_size  = Vector2(200, 44)
-	val_lbl.position             = Vector2(50, 0)
+	val_lbl.custom_minimum_size  = Vector2(SLIDER_W - arrow_size * 2 - 8, 44)
+	val_lbl.position             = Vector2(arrow_size + 4, 0)
 	container.add_child(val_lbl)
 
-	var right_btn = Button.new()
+	# RIGHT arrow button
+	var right_btn = TextureButton.new()
 	right_btn.name = "Right"
-	right_btn.text = ">"
-	if custom_font: right_btn.add_theme_font_override("font", custom_font)
-	right_btn.add_theme_font_size_override("font_size", 28)
-	right_btn.custom_minimum_size = Vector2(44, 44)
-	right_btn.position = Vector2(256, 0)
-	container.add_child(right_btn)
+	right_btn.ignore_texture_size = true
+	right_btn.stretch_mode = TextureButton.STRETCH_KEEP_ASPECT_CENTERED
+	right_btn.custom_minimum_size = Vector2(arrow_size, arrow_size)
+	right_btn.position = Vector2(SLIDER_W - arrow_size, (44.0 - arrow_size) / 2.0)
+	if right_tex:
+		right_btn.texture_normal = right_tex
+	else:
+		var fb = Button.new(); fb.name = "Right"; fb.text = ">"
+		if custom_font: fb.add_theme_font_override("font", custom_font)
+		fb.add_theme_font_size_override("font_size", 28)
+		fb.custom_minimum_size = Vector2(44, 44)
+		fb.position = Vector2(SLIDER_W - 44, 0)
+		container.add_child(fb)
+	if right_tex:
+		container.add_child(right_btn)
 
 	parent.add_child(container)
 	return container
 
+# Helper: load a texture and return a version scaled to target_px × target_px
+func _scale_texture(path: String, target_px: int) -> Texture2D:
+	var tex = load(path)
+	if not tex:
+		return null
+	var img = tex.get_image()
+	if not img:
+		return tex
+	img.resize(target_px, target_px, Image.INTERPOLATE_LANCZOS)
+	return ImageTexture.create_from_image(img)
+
+# ── Keybind button ────────────────────────────────────────────
 func _place_keybind_button(parent: Control, initial_text: String, x: float, y: float) -> Button:
 	var btn = Button.new()
 	btn.text = initial_text
