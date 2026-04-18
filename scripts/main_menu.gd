@@ -42,6 +42,10 @@ func _ready():
 	load_button_texture(play_button, "res://assets/images/button_play.png")
 	load_button_texture(settings_button, "res://assets/images/button_settings.png")
 	load_button_texture(exit_button, "res://assets/images/button_exit.png")
+	# Cursor to hover on buttons
+	SettingsManager.set_hover_cursor(play_button)
+	SettingsManager.set_hover_cursor(settings_button)
+	SettingsManager.set_hover_cursor(exit_button)
 	
 	# Load and play background music
 	var music = load("res://assets/sounds/landing_bgm_2.mp3")

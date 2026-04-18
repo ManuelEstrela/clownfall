@@ -44,8 +44,30 @@ signal audio_changed
 signal visual_changed
 
 func _ready():
+	setup_custom_cursor()
 	load_settings()
 	apply_all_settings()
+
+
+func setup_custom_cursor():
+	var default_cursor = load("res://assets/images/cursor/cursor_default.png")
+	var hover_cursor = load("res://assets/images/cursor/cursor_hover.png")
+	
+	if default_cursor:
+		var img = default_cursor.get_image()
+		img.resize(64, 64, Image.INTERPOLATE_LANCZOS)
+		var scaled = ImageTexture.create_from_image(img)
+		Input.set_custom_mouse_cursor(scaled, Input.CURSOR_ARROW)
+		Input.set_custom_mouse_cursor(scaled, Input.CURSOR_IBEAM)
+	
+	if hover_cursor:
+		var img = hover_cursor.get_image()
+		img.resize(64, 64, Image.INTERPOLATE_LANCZOS)
+		var scaled = ImageTexture.create_from_image(img)
+		Input.set_custom_mouse_cursor(scaled, Input.CURSOR_POINTING_HAND)
+
+static func set_hover_cursor(control: Control):
+	control.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 
 # ====== APPLY SETTINGS ======
 
