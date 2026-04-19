@@ -145,6 +145,7 @@ func setup_nav_buttons():
 
 		add_child(btn)
 		category_buttons[cat] = btn
+		SettingsManager.set_hover_cursor(btn)
 
 	nav_arrow = Sprite2D.new()
 	nav_arrow.texture = load("res://assets/images/settings/arrowcategory.png")
@@ -203,6 +204,7 @@ func setup_back_button():
 	back_button.custom_minimum_size = Vector2(160, 55)
 	back_button.position = Vector2(50, get_viewport_rect().size.y - 90)
 	back_button.pressed.connect(_on_back_pressed)
+	SettingsManager.set_hover_cursor(back_button)
 	add_child(back_button)
 
 # ══════════════════════════════════════════════════════════════
@@ -322,30 +324,34 @@ func _index_to_fps(idx: int) -> int:
 		_: return 0
 
 # ══════════════════════════════════════════════════════════════
-#  GAMEPLAY PANEL — keybind_box.png, centered under each title
+#  GAMEPLAY PANEL
+#    Left col:  Powerup Slot 1 / 2 / 3
+#    Right col: Drop Key / Drop Assist
 # ══════════════════════════════════════════════════════════════
 func setup_gameplay_panel():
 	var row_h := 120.0
 
-	_place_label(gameplay_panel, "DROP ASSIST", COL_L, ROW_TOP)
-	var da = _place_checkbox(gameplay_panel, settings.drop_assist_enabled, COL_L, ROW_TOP + CTRL_OFFSET_Y)
-	da.toggled.connect(func(p): settings.set_drop_assist(p); settings.save_settings())
-
-	_place_label(gameplay_panel, "DROP KEY", COL_L, ROW_TOP + row_h)
-	var dk = _place_keybind_button(gameplay_panel, settings.get_key_name(settings.drop_key), COL_L, ROW_TOP + row_h + CTRL_OFFSET_Y)
-	dk.pressed.connect(func(): _start_listening("drop", dk))
-
-	_place_label(gameplay_panel, "POWERUP SLOT 1", COL_L, ROW_TOP + row_h * 2)
-	var p1 = _place_keybind_button(gameplay_panel, settings.get_key_name(settings.powerup_key_1), COL_L, ROW_TOP + row_h * 2 + CTRL_OFFSET_Y)
+	# LEFT: Powerup Slot 1, 2, 3
+	_place_label(gameplay_panel, "POWERUP SLOT 1", COL_L, ROW_TOP)
+	var p1 = _place_keybind_button(gameplay_panel, settings.get_key_name(settings.powerup_key_1), COL_L, ROW_TOP + CTRL_OFFSET_Y)
 	p1.pressed.connect(func(): _start_listening("powerup_1", p1))
 
-	_place_label(gameplay_panel, "POWERUP SLOT 2", COL_R, ROW_TOP)
-	var p2 = _place_keybind_button(gameplay_panel, settings.get_key_name(settings.powerup_key_2), COL_R, ROW_TOP + CTRL_OFFSET_Y)
+	_place_label(gameplay_panel, "POWERUP SLOT 2", COL_L, ROW_TOP + row_h)
+	var p2 = _place_keybind_button(gameplay_panel, settings.get_key_name(settings.powerup_key_2), COL_L, ROW_TOP + row_h + CTRL_OFFSET_Y)
 	p2.pressed.connect(func(): _start_listening("powerup_2", p2))
 
-	_place_label(gameplay_panel, "POWERUP SLOT 3", COL_R, ROW_TOP + row_h)
-	var p3 = _place_keybind_button(gameplay_panel, settings.get_key_name(settings.powerup_key_3), COL_R, ROW_TOP + row_h + CTRL_OFFSET_Y)
+	_place_label(gameplay_panel, "POWERUP SLOT 3", COL_L, ROW_TOP + row_h * 2)
+	var p3 = _place_keybind_button(gameplay_panel, settings.get_key_name(settings.powerup_key_3), COL_L, ROW_TOP + row_h * 2 + CTRL_OFFSET_Y)
 	p3.pressed.connect(func(): _start_listening("powerup_3", p3))
+
+	# RIGHT: Drop Key, Drop Assist
+	_place_label(gameplay_panel, "DROP KEY", COL_R, ROW_TOP)
+	var dk = _place_keybind_button(gameplay_panel, settings.get_key_name(settings.drop_key), COL_R, ROW_TOP + CTRL_OFFSET_Y)
+	dk.pressed.connect(func(): _start_listening("drop", dk))
+
+	_place_label(gameplay_panel, "DROP ASSIST", COL_R, ROW_TOP + row_h)
+	var da = _place_checkbox(gameplay_panel, settings.drop_assist_enabled, COL_R, ROW_TOP + row_h + CTRL_OFFSET_Y)
+	da.toggled.connect(func(p): settings.set_drop_assist(p); settings.save_settings())
 
 func _start_listening(slot: String, btn: Button):
 	listening_for_key = true
@@ -479,6 +485,7 @@ func _place_slider(parent: Control, initial: float, x: float, y: float) -> HSlid
 		slider.add_theme_icon_override("grabber",           scaled_knob)
 		slider.add_theme_icon_override("grabber_highlight", scaled_knob)
 
+	SettingsManager.set_hover_cursor(slider)
 	parent.add_child(slider)
 	return slider
 
@@ -513,6 +520,7 @@ func _place_checkbox(parent: Control, initial: bool, x: float, y: float) -> Text
 		mark.visible      = initial
 		cb.add_child(mark)
 		cb.toggled.connect(func(p): mark.visible = p)
+	SettingsManager.set_hover_cursor(cb)
 	parent.add_child(cb)
 	return cb
 
@@ -538,6 +546,7 @@ func _place_selector_img(parent: Control, option_names: Array, current_idx: int,
 	left_btn.custom_minimum_size = Vector2(arrow_size, arrow_size)
 	left_btn.position = Vector2(0, (44.0 - arrow_size) / 2.0)
 	if left_tex: left_btn.texture_normal = left_tex
+	SettingsManager.set_hover_cursor(left_btn)
 	container.add_child(left_btn)
 
 	# Option image — the handwritten word asset
@@ -562,6 +571,7 @@ func _place_selector_img(parent: Control, option_names: Array, current_idx: int,
 	right_btn.custom_minimum_size = Vector2(arrow_size, arrow_size)
 	right_btn.position = Vector2(SLIDER_W - arrow_size, (44.0 - arrow_size) / 2.0)
 	if right_tex: right_btn.texture_normal = right_tex
+	SettingsManager.set_hover_cursor(right_btn)
 	container.add_child(right_btn)
 
 	parent.add_child(container)
@@ -599,6 +609,7 @@ func _place_keybind_button(parent: Control, initial_text: String, x: float, y: f
 		btn.add_theme_stylebox_override("pressed", style)
 		btn.add_theme_stylebox_override("focus",   style)
 
+	SettingsManager.set_hover_cursor(btn)
 	parent.add_child(btn)
 	return btn
 

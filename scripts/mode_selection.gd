@@ -94,6 +94,7 @@ func setup_ui():
 	classic_image.position = Vector2(200, 210)
 	classic_image.pivot_offset = classic_image.size / 2
 	classic_image.mouse_filter = Control.MOUSE_FILTER_STOP
+	classic_image.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND  # ← hover cursor
 	add_child(classic_image)
 	
 	classic_image.gui_input.connect(func(event):
@@ -117,6 +118,7 @@ func setup_ui():
 	classic_title.expand_mode = TextureRect.EXPAND_FIT_WIDTH_PROPORTIONAL
 	classic_title.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	classic_title.mouse_filter = Control.MOUSE_FILTER_STOP
+	classic_title.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND  # ← hover cursor
 	add_child(classic_title)
 	
 	if classic_title.texture:
@@ -154,6 +156,7 @@ func setup_ui():
 	chaos_image.position = Vector2(680, 210)
 	chaos_image.pivot_offset = chaos_image.size / 2
 	chaos_image.mouse_filter = Control.MOUSE_FILTER_STOP
+	chaos_image.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND  # ← hover cursor
 	add_child(chaos_image)
 	
 	chaos_image.gui_input.connect(func(event):
@@ -177,6 +180,7 @@ func setup_ui():
 	chaos_title.expand_mode = TextureRect.EXPAND_FIT_WIDTH_PROPORTIONAL
 	chaos_title.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	chaos_title.mouse_filter = Control.MOUSE_FILTER_STOP
+	chaos_title.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND  # ← hover cursor
 	add_child(chaos_title)
 	
 	if chaos_title.texture:
@@ -216,19 +220,26 @@ func setup_ui():
 		var texture_width = start_button.texture_normal.get_width()
 		var texture_height = start_button.texture_normal.get_height()
 		var scaled_width = texture_width * button_scale
-		var scaled_height = texture_height * button_scale
-		
-		start_button.custom_minimum_size = Vector2(texture_width, texture_height)
+
 		start_button.scale = Vector2(button_scale, button_scale)
-		start_button.position = Vector2((viewport_size.x - scaled_width) / 2, 540)
-		start_button.pivot_offset = Vector2(texture_width / 2, texture_height / 2)
+		# Pivot at center for hover animation to scale outward evenly
+		start_button.pivot_offset = Vector2(texture_width / 2.0, texture_height / 2.0)
+		# Without custom_minimum_size, position is the unscaled top-left.
+		# Visual center = position + pivot_offset * scale
+		# We want visual center at viewport_size.x / 2, so:
+		# position.x = viewport_size.x / 2 - pivot_offset.x * scale
+		start_button.position = Vector2(
+			viewport_size.x / 2.0 - (texture_width / 2.0) * button_scale,
+			550.0
+		)
 	
 	start_button.pressed.connect(_on_start_pressed)
-	start_button.mouse_entered.connect(func(): 
+	start_button.mouse_entered.connect(func():
 		button_hover_sound.play()
 		animate_button_hover(start_button, true)
 	)
 	start_button.mouse_exited.connect(func(): animate_button_hover(start_button, false))
+	SettingsManager.set_hover_cursor(start_button)  # ← hover cursor
 	
 	print("✅ Start button added")
 
@@ -292,7 +303,6 @@ func _on_start_pressed():
 		print("⚠️ Please select a game mode first!")
 		return
 	
-	# Play button click AND start game sound
 	button_click_sound.play()
 	start_game_sound.play()
 	

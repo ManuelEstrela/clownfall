@@ -55,14 +55,14 @@ func setup_custom_cursor():
 	
 	if default_cursor:
 		var img = default_cursor.get_image()
-		img.resize(64, 64, Image.INTERPOLATE_LANCZOS)
+		img.resize(56, 56, Image.INTERPOLATE_LANCZOS)
 		var scaled = ImageTexture.create_from_image(img)
 		Input.set_custom_mouse_cursor(scaled, Input.CURSOR_ARROW)
 		Input.set_custom_mouse_cursor(scaled, Input.CURSOR_IBEAM)
 	
 	if hover_cursor:
 		var img = hover_cursor.get_image()
-		img.resize(64, 64, Image.INTERPOLATE_LANCZOS)
+		img.resize(56, 56, Image.INTERPOLATE_LANCZOS)
 		var scaled = ImageTexture.create_from_image(img)
 		Input.set_custom_mouse_cursor(scaled, Input.CURSOR_POINTING_HAND)
 
