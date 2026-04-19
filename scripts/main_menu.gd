@@ -47,20 +47,21 @@ func _ready():
 	SettingsManager.set_hover_cursor(settings_button)
 	SettingsManager.set_hover_cursor(exit_button)
 	
-	# Load and play background music
+	# Load and play background music on the Music bus
 	var music = load("res://assets/sounds/landing_bgm_2.mp3")
 	if music:
 		bgm.stream = music
 		bgm.volume_db = 0
+		bgm.bus = "Music"
 		bgm.play()
-		print("✅ Background music playing")
+		print("✅ Background music playing (Music bus)")
 	else:
 		print("⚠️ Background music not found")
 	
 	# Add hover effects
 	setup_button_hover_effects()
 	
-		# ✨ ADD THIS LINE:
+	# ✨ ADD THIS LINE:
 	setup_button_sounds()
 	
 	buttons_initialized = true
@@ -212,7 +213,7 @@ func setup_button_sounds():
 	# Create hover sound
 	var hover_sound = AudioStreamPlayer.new()
 	hover_sound.stream = load("res://assets/sounds/button_hover.mp3")
-	hover_sound.volume_db = -5  # Quieter
+	hover_sound.volume_db = -5
 	hover_sound.bus = "SFX"
 	add_child(hover_sound)
 	
@@ -232,3 +233,4 @@ func setup_button_sounds():
 	
 	exit_button.mouse_entered.connect(func(): hover_sound.play())
 	exit_button.pressed.connect(func(): click_sound.play())
+	

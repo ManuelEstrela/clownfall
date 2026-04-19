@@ -8,14 +8,36 @@ var is_paused: bool = false
 var settings_menu_scene = preload("res://scenes/settings_menu.tscn")
 var settings_menu_instance = null
 
+# Pause menu sounds
+var show_esc_sound: AudioStreamPlayer = null
+var hide_esc_sound: AudioStreamPlayer = null
+
 func _ready():
 	# Hide pause menu by default
 	visible = false
+	
+	# Setup pause sounds
+	setup_sounds()
 	
 	# Connect to settings manager to restore settings when resuming
 	var settings = get_node_or_null("/root/SettingsManager")
 	if settings:
 		settings.visual_changed.connect(_on_settings_changed)
+
+func setup_sounds():
+	show_esc_sound = AudioStreamPlayer.new()
+	show_esc_sound.stream = load("res://assets/sounds/show_esc.mp3")
+	show_esc_sound.volume_db = 0
+	show_esc_sound.bus = "SFX"
+	add_child(show_esc_sound)
+	
+	hide_esc_sound = AudioStreamPlayer.new()
+	hide_esc_sound.stream = load("res://assets/sounds/hide_esc.mp3")
+	hide_esc_sound.volume_db = 0
+	hide_esc_sound.bus = "SFX"
+	add_child(hide_esc_sound)
+	
+	print("✅ Pause menu sounds loaded!")
 
 func _input(event):
 	# Listen for ESC key
@@ -36,12 +58,16 @@ func pause_game():
 	is_paused = true
 	visible = true
 	get_tree().paused = true
+	if show_esc_sound:
+		show_esc_sound.play()
 	print("⏸️ Game paused")
 
 func resume_game():
 	is_paused = false
 	visible = false
 	get_tree().paused = false
+	if hide_esc_sound:
+		hide_esc_sound.play()
 	print("▶️ Game resumed")
 
 func _on_resume_pressed():
