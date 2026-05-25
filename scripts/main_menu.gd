@@ -50,11 +50,12 @@ func _ready():
 	# Load and play background music on the Music bus
 	var music = load("res://assets/sounds/landing_bgm_2.mp3")
 	if music:
+		music.loop = true
 		bgm.stream = music
 		bgm.volume_db = 0
 		bgm.bus = "Music"
 		bgm.play()
-		print("✅ Background music playing (Music bus)")
+		print("✅ Background music playing (Music bus, looping)")
 	else:
 		print("⚠️ Background music not found")
 	

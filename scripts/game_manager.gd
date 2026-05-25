@@ -39,9 +39,7 @@ var van_y_offset: float = 40
 var van_scale: float = 0.87
 
 # ====== BALLOON FLOAT ANIMATION ======
-# How far up/down the balloons travel (pixels)
 var balloon_float_amount: float = 12.0
-# How long one full up-down cycle takes (seconds)
 var balloon_float_duration: float = 4.2
 
 # ================================================
@@ -70,8 +68,7 @@ var score_label: Label = null
 var next_balloon: Sprite2D = null
 var next_clown_sprite: Sprite2D = null
 
-# Balloon group roots — everything in a group is parented to these
-# so a single tween on the root moves everything together
+# Balloon group roots
 var score_balloon_root: Node2D = null
 var next_balloon_root: Node2D = null
 
@@ -79,6 +76,11 @@ var next_balloon_root: Node2D = null
 var click_sound: AudioStreamPlayer = null
 var game_over_sound: AudioStreamPlayer = null
 var pop_sounds: Array[AudioStreamPlayer] = []
+
+# Collision sounds (size-grouped)
+var collision_sound_small: AudioStreamPlayer = null   # types 0-3
+var collision_sound_medium: AudioStreamPlayer = null  # types 4-6
+var collision_sound_large: AudioStreamPlayer = null   # types 7-10
 
 # Boundaries
 var play_area_left: float
@@ -208,7 +210,7 @@ func _ready():
 
 func setup_audio():
 	click_sound = AudioStreamPlayer.new()
-	click_sound.stream = load("res://assets/sounds/assets_click.ogg")
+	click_sound.stream = load("res://assets/sounds/assets_click.mp3")
 	click_sound.volume_db = 0
 	click_sound.bus = "SFX"
 	add_child(click_sound)
@@ -227,15 +229,32 @@ func setup_audio():
 		add_child(pop_player)
 		pop_sounds.append(pop_player)
 
-	print("Audio setup complete!")
+	# Collision sounds — grouped by clown size
+	collision_sound_small = AudioStreamPlayer.new()
+	collision_sound_small.stream = load("res://assets/sounds/collision/clown_collision_1.wav")
+	collision_sound_small.volume_db = 0
+	collision_sound_small.bus = "SFX"
+	add_child(collision_sound_small)
+
+	collision_sound_medium = AudioStreamPlayer.new()
+	collision_sound_medium.stream = load("res://assets/sounds/collision/clown_collision_2.wav")
+	collision_sound_medium.volume_db = 0
+	collision_sound_medium.bus = "SFX"
+	add_child(collision_sound_medium)
+
+	collision_sound_large = AudioStreamPlayer.new()
+	collision_sound_large.stream = load("res://assets/sounds/collision/clown_collision_3.wav")
+	collision_sound_large.volume_db = 0
+	collision_sound_large.bus = "SFX"
+	add_child(collision_sound_large)
+
+	print("✅ Audio setup complete (including collision sounds)!")
 
 func setup_ui_balloons(viewport_size: Vector2, container_scale: float):
 	var balloon_texture = theme_manager.get_balloon_texture()
 	var custom_font = load("res://assets/fonts/Clownfall-Regular.ttf")
 
 	# ── SCORE GROUP ──────────────────────────────────────────────
-	# A Node2D root that holds the balloon + label together.
-	# The float tween runs on this root so both move as one.
 	score_balloon_root = Node2D.new()
 	score_balloon_root.z_index = 200
 	score_balloon_root.position = Vector2(score_balloon_x, score_balloon_y)
@@ -245,7 +264,6 @@ func setup_ui_balloons(viewport_size: Vector2, container_scale: float):
 	score_balloon.texture = balloon_texture
 	var final_score_scale = score_balloon_scale * container_scale
 	score_balloon.scale = Vector2(final_score_scale, final_score_scale)
-	# Position relative to root (root is at the world position)
 	score_balloon.position = Vector2.ZERO
 	score_balloon_root.add_child(score_balloon)
 
@@ -277,7 +295,6 @@ func setup_ui_balloons(viewport_size: Vector2, container_scale: float):
 	next_balloon.position = Vector2.ZERO
 	next_balloon_root.add_child(next_balloon)
 
-	# "NEXT" label — parented to the balloon so it moves with it
 	var next_label = Label.new()
 	next_balloon.add_child(next_label)
 	if custom_font:
@@ -291,7 +308,6 @@ func setup_ui_balloons(viewport_size: Vector2, container_scale: float):
 	next_label.size = Vector2(120 / final_next_scale, 40 / final_next_scale)
 	next_label.text = "NEXT"
 
-	# Next clown sprite — also parented to the balloon
 	next_clown_sprite = Sprite2D.new()
 	next_balloon.add_child(next_clown_sprite)
 	next_clown_sprite.z_index = 1
@@ -300,25 +316,19 @@ func setup_ui_balloons(viewport_size: Vector2, container_scale: float):
 
 	# ── START FLOAT ANIMATIONS ───────────────────────────────────
 	_start_balloon_float(score_balloon_root, 0.0)
-	# Offset the next balloon's phase slightly so they don't move in perfect sync
 	_start_balloon_float(next_balloon_root, balloon_float_duration * 0.4)
 
 func _start_balloon_float(root: Node2D, phase_offset: float):
-	# Store the resting Y so the tween always returns to it
 	var rest_y = root.position.y
 
-	# If there's a phase offset, wait that long before starting the loop
-	# so the two balloons feel naturally out of step
 	var start_tween = func():
 		var tween = create_tween()
-		tween.set_loops()  # loop forever
+		tween.set_loops()
 		tween.set_trans(Tween.TRANS_SINE)
 		tween.set_ease(Tween.EASE_IN_OUT)
-		# Float up
 		tween.tween_property(root, "position:y",
 			rest_y - balloon_float_amount,
 			balloon_float_duration / 2.0)
-		# Float back down
 		tween.tween_property(root, "position:y",
 			rest_y + balloon_float_amount,
 			balloon_float_duration / 2.0)
@@ -407,6 +417,9 @@ func drop_clown():
 	new_clown.freeze = false
 	new_clown.can_merge = true
 
+	# Track this as the last dropped clown for collision sounds
+	set_meta("last_dropped_clown", new_clown)
+
 	var settings = get_node_or_null("/root/SettingsManager")
 	if settings:
 		settings.add_clowns_dropped(1)
@@ -445,6 +458,13 @@ func merge_clowns(clown1, clown2, merge_pos: Vector2, new_type: int):
 	var settings = get_node_or_null("/root/SettingsManager")
 	if settings:
 		settings.update_highest_tier(new_type)
+
+	# If one of the merging clowns was the last dropped, clear it
+	# so the newly merged clown doesn't inherit collision sounds
+	if has_meta("last_dropped_clown"):
+		var last = get_meta("last_dropped_clown")
+		if last == clown1 or last == clown2:
+			remove_meta("last_dropped_clown")
 
 	clown1.queue_free()
 	clown2.queue_free()
