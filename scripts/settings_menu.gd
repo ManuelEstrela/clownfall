@@ -1,41 +1,31 @@
 extends Control
 
-# Reference to settings manager
 var settings: Node
-
-# Current selected category
 var current_category: String = "audio"
 
-# Keybind listening state
 var listening_for_key: bool = false
 var listening_slot: String = ""
 var listening_button: Button = null
 
-# Track if opened from pause menu
 var opened_from_pause_menu: bool = false
 
-# UI References
 var background: TextureRect
 var back_button: TextureButton
 
-# Category buttons (right side, vertical nav list)
 var category_buttons: Dictionary = {}
 var nav_arrow: Sprite2D = null
 
-# Content panels (left side)
 var content_container: Control
 var audio_panel: Control
 var visual_panel: Control
 var gameplay_panel: Control
 var statistics_panel: Control
 
-# Custom font
 var custom_font: Font
 
 # ══════════════════════════════════════════════════════════════
 #  LAYOUT CONSTANTS
 # ══════════════════════════════════════════════════════════════
-
 const NAV_X         := 970.0
 const NAV_Y_START   := 318.0
 const NAV_BTN_W     := 185.0
@@ -59,16 +49,54 @@ const SLIDER_W      := 280.0
 const SLIDER_H      := 22.0
 const KNOB_SIZE     := 32.0
 const CHECKBOX_SIZE := 50.0
-
-# Height for the handwritten option word images in selectors
 const OPTION_IMG_H  := 36.0
-
-# Keybind box dimensions — adjust if your asset has a different aspect ratio
 const KEYBIND_W     := 200.0
 const KEYBIND_H     := 50.0
 
 # ══════════════════════════════════════════════════════════════
+#  CONTROLLER STATE
+# ══════════════════════════════════════════════════════════════
+# Left stick:  navigate grid (up/down/left/right between controls)
+#              navigate categories (up/down when in category col)
+#              moving right from category col enters the panel grid
+#              moving left from col 0 does nothing (hard boundary)
+#              moving up from row 0 does nothing (hard boundary)
+#              moving down from last row does nothing (hard boundary)
+# Right stick: horizontal only — adjusts slider value or cycles selector
+# Cross:       toggle checkbox / activate keybind
+# Circle:      go back
 
+var using_controller: bool = false
+var mouse_has_moved: bool = false
+
+# Which "column zone" we're in:
+#   -1 = category nav column (right side nav buttons)
+#    0 = left content column
+#    1 = right content column
+var ctrl_col: int = -1
+var ctrl_row: int = 0       # row within current panel grid
+var ctrl_cat_index: int = 0 # which category is highlighted
+
+var ctrl_nav_cd: float = 0.0
+var ctrl_adj_cd: float = 0.0
+const NAV_CD: float = 0.22
+const ADJ_CD: float = 0.06
+const AXIS_THRESHOLD: float = 0.3
+
+var ctrl_highlight: ColorRect = null
+
+# panel_grid["audio"] = [
+#   [ {left cell row0}, {right cell row0} ],
+#   [ {left cell row1}, {right cell row1} ],
+# ]
+# cell = { "type": "slider"|"checkbox"|"selector"|"keybind"|"none", "node": <node> }
+var panel_grid: Dictionary = {
+	"audio": [], "visual": [], "gameplay": [], "statistics": []
+}
+
+const CATEGORIES = ["audio", "visual", "gameplay", "statistics"]
+
+# ══════════════════════════════════════════════════════════════
 func _ready():
 	opened_from_pause_menu = get_tree().paused
 	settings = get_node("/root/SettingsManager")
@@ -78,6 +106,7 @@ func _ready():
 	setup_nav_buttons()
 	setup_content_area()
 	setup_back_button()
+	setup_ctrl_highlight()
 
 	setup_audio_panel()
 	setup_visual_panel()
@@ -85,13 +114,270 @@ func _ready():
 	setup_statistics_panel()
 
 	switch_category("audio")
+	Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
 	print("Settings menu ready")
 
+# ══════════════════════════════════════════════════════════════
+#  HIGHLIGHT
+# ══════════════════════════════════════════════════════════════
+func setup_ctrl_highlight():
+	ctrl_highlight = ColorRect.new()
+	ctrl_highlight.color = Color(1, 1, 1, 0.15)
+	ctrl_highlight.visible = false
+	ctrl_highlight.z_index = 5
+	ctrl_highlight.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	content_container.add_child(ctrl_highlight)
+
+func _show_highlight_on(node: Control):
+	if not node or not ctrl_highlight:
+		_hide_highlight()
+		return
+	# Wait one frame so layout positions are settled
+	await get_tree().process_frame
+	if not is_instance_valid(node) or not is_instance_valid(ctrl_highlight):
+		return
+	var gp = node.get_global_position() - content_container.get_global_position()
+	var sz = node.size if node.size.x > 10 else Vector2(SLIDER_W, KNOB_SIZE)
+	ctrl_highlight.position = Vector2(gp.x - 8, gp.y - 6)
+	ctrl_highlight.size = Vector2(sz.x + 16, sz.y + 12)
+	ctrl_highlight.visible = true
+
+func _hide_highlight():
+	if ctrl_highlight:
+		ctrl_highlight.visible = false
+
+# ══════════════════════════════════════════════════════════════
+#  PROCESS — right stick adjusts current control value
+# ══════════════════════════════════════════════════════════════
+func _process(delta):
+	if ctrl_nav_cd > 0.0: ctrl_nav_cd -= delta
+	if ctrl_adj_cd > 0.0: ctrl_adj_cd -= delta
+
+	if not using_controller or ctrl_col < 0:
+		return
+	if ctrl_adj_cd > 0.0:
+		return
+
+	var grid = panel_grid.get(current_category, [])
+	if ctrl_row >= grid.size():
+		return
+	var row = grid[ctrl_row]
+	if ctrl_col >= row.size():
+		return
+	var cell = row[ctrl_col]
+
+	var rx = Input.get_joy_axis(0, JOY_AXIS_RIGHT_X)
+	if abs(rx) < 0.15:
+		return
+
+	if cell.type == "slider":
+		var slider: HSlider = cell.node
+		slider.value = clampf(slider.value + rx * 0.018, 0.0, 1.0)
+		ctrl_adj_cd = ADJ_CD
+
+	elif cell.type == "selector":
+		if ctrl_adj_cd <= 0.0:
+			if rx > 0:
+				cell.node.get_node("Right").emit_signal("pressed")
+			else:
+				cell.node.get_node("Left").emit_signal("pressed")
+			ctrl_adj_cd = NAV_CD
+
+# ══════════════════════════════════════════════════════════════
+#  INPUT
+# ══════════════════════════════════════════════════════════════
 func _input(event):
-	if opened_from_pause_menu and event.is_action_pressed("ui_cancel"):
+	# Circle / ESC — always go back
+	if event.is_action_pressed("ui_cancel"):
 		if not listening_for_key:
 			_on_back_pressed()
 			get_viewport().set_input_as_handled()
+		return
+
+	# Mouse movement — switch to mouse mode
+	if event is InputEventMouseMotion:
+		mouse_has_moved = true
+		if using_controller:
+			using_controller = false
+			Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
+			_hide_highlight()
+			_refresh_cat_visuals()
+		return
+
+	if event is InputEventMouseButton:
+		if mouse_has_moved and using_controller:
+			using_controller = false
+			Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
+			_hide_highlight()
+			_refresh_cat_visuals()
+		return
+
+	# Filter axis drift
+	if event is InputEventJoypadMotion:
+		if abs(event.axis_value) < AXIS_THRESHOLD:
+			return
+
+	if not (event is InputEventJoypadButton or event is InputEventJoypadMotion):
+		return
+
+	# First real controller input — activate
+	if not using_controller:
+		using_controller = true
+		mouse_has_moved = false
+		ctrl_col = -1
+		ctrl_cat_index = CATEGORIES.find(current_category)
+		Input.set_mouse_mode(Input.MOUSE_MODE_HIDDEN)
+		_refresh_cat_visuals()
+		return
+
+	# ── Category column (ctrl_col == -1) ──────────────────────
+	if ctrl_col == -1:
+		if event.is_action_pressed("ui-up") and ctrl_nav_cd <= 0.0:
+			# Hard boundary — can't go above first category
+			if ctrl_cat_index > 0:
+				ctrl_cat_index -= 1
+				switch_category(CATEGORIES[ctrl_cat_index])
+				_refresh_cat_visuals()
+				ctrl_nav_cd = NAV_CD
+			get_viewport().set_input_as_handled()
+
+		elif event.is_action_pressed("ui-down") and ctrl_nav_cd <= 0.0:
+			# Hard boundary — can't go below last category
+			if ctrl_cat_index < CATEGORIES.size() - 1:
+				ctrl_cat_index += 1
+				switch_category(CATEGORIES[ctrl_cat_index])
+				_refresh_cat_visuals()
+				ctrl_nav_cd = NAV_CD
+			get_viewport().set_input_as_handled()
+
+		elif event.is_action_pressed("move_right") and ctrl_nav_cd <= 0.0:
+			# Enter panel grid at col 0, row 0
+			ctrl_col = 0
+			ctrl_row = 0
+			_highlight_current()
+			ctrl_nav_cd = NAV_CD
+			get_viewport().set_input_as_handled()
+
+		elif event.is_action_pressed("move_left") and ctrl_nav_cd <= 0.0:
+			# Hard boundary — already in leftmost zone, do nothing
+			get_viewport().set_input_as_handled()
+
+		elif event.is_action_pressed("ui-confirm"):
+			# Confirm in category nav enters the panel
+			ctrl_col = 0
+			ctrl_row = 0
+			_highlight_current()
+			get_viewport().set_input_as_handled()
+
+	# ── Panel grid ────────────────────────────────────────────
+	else:
+		var grid = panel_grid.get(current_category, [])
+
+		if event.is_action_pressed("move_left") and ctrl_nav_cd <= 0.0:
+			if ctrl_col > 0:
+				ctrl_col -= 1
+				_highlight_current()
+				ctrl_nav_cd = NAV_CD
+			# Hard boundary — col 0, do nothing, stay on current cell
+			get_viewport().set_input_as_handled()
+
+		elif event.is_action_pressed("move_right") and ctrl_nav_cd <= 0.0:
+			# Only move right if right cell exists and is not empty
+			if ctrl_col == 0:
+				var row = grid[ctrl_row] if ctrl_row < grid.size() else []
+				if row.size() > 1 and row[1].type != "none":
+					ctrl_col = 1
+					_highlight_current()
+					ctrl_nav_cd = NAV_CD
+			# Hard boundary — already at rightmost filled cell, do nothing
+			get_viewport().set_input_as_handled()
+
+		elif event.is_action_pressed("ui-up") and ctrl_nav_cd <= 0.0:
+			if ctrl_row > 0:
+				ctrl_row -= 1
+				# If right col selected but new row has no right cell, clamp to left
+				var row = grid[ctrl_row] if ctrl_row < grid.size() else []
+				if ctrl_col == 1 and (row.size() < 2 or row[1].type == "none"):
+					ctrl_col = 0
+				_highlight_current()
+				ctrl_nav_cd = NAV_CD
+			# Hard boundary — row 0, do nothing, stay on current cell
+			get_viewport().set_input_as_handled()
+
+		elif event.is_action_pressed("ui-down") and ctrl_nav_cd <= 0.0:
+			if ctrl_row < grid.size() - 1:
+				ctrl_row += 1
+				var row = grid[ctrl_row] if ctrl_row < grid.size() else []
+				if ctrl_col == 1 and (row.size() < 2 or row[1].type == "none"):
+					ctrl_col = 0
+				_highlight_current()
+				ctrl_nav_cd = NAV_CD
+			# Hard boundary — last row, do nothing
+			get_viewport().set_input_as_handled()
+
+		elif event.is_action_pressed("ui-confirm") and ctrl_row < grid.size():
+			var row = grid[ctrl_row]
+			if ctrl_col < row.size():
+				var cell = row[ctrl_col]
+				if cell.type == "checkbox":
+					var cb: TextureButton = cell.node
+					cb.button_pressed = not cb.button_pressed
+					cb.toggled.emit(cb.button_pressed)
+				elif cell.type == "keybind":
+					cell.node.emit_signal("pressed")
+			get_viewport().set_input_as_handled()
+
+func _unhandled_input(event):
+	if not listening_for_key:
+		return
+	if event is InputEventKey and event.pressed:
+		var key = event.keycode
+		match listening_slot:
+			"drop":      settings.set_drop_key(key)
+			"powerup_1": settings.set_powerup_key(1, key)
+			"powerup_2": settings.set_powerup_key(2, key)
+			"powerup_3": settings.set_powerup_key(3, key)
+		if listening_button:
+			listening_button.text     = settings.get_key_name(key)
+			listening_button.modulate = Color.WHITE
+		listening_for_key = false
+		listening_slot    = ""
+		listening_button  = null
+		settings.save_settings()
+		get_viewport().set_input_as_handled()
+
+# ══════════════════════════════════════════════════════════════
+#  CONTROLLER HELPERS
+# ══════════════════════════════════════════════════════════════
+func _highlight_current():
+	var grid = panel_grid.get(current_category, [])
+	if ctrl_row >= grid.size():
+		return
+	var row = grid[ctrl_row]
+	if ctrl_col >= row.size():
+		return
+	var cell = row[ctrl_col]
+	if cell.type == "none" or not cell.node:
+		_hide_highlight()
+		return
+	_show_highlight_on(cell.node)
+
+func _refresh_cat_visuals():
+	for i in CATEGORIES.size():
+		var cat = CATEGORIES[i]
+		var btn = category_buttons[cat]
+		# Highlight whichever category is currently pointed at by controller
+		var is_ctrl_pointed = using_controller and ctrl_col == -1 and i == ctrl_cat_index
+		if is_ctrl_pointed or cat == current_category:
+			btn.modulate = Color(1, 1, 1, 1.0)
+		else:
+			btn.modulate = Color(1, 1, 1, 0.5)
+
+func _cell(type: String, node) -> Dictionary:
+	return { "type": type, "node": node }
+
+func _empty() -> Dictionary:
+	return { "type": "none", "node": null }
 
 # ══════════════════════════════════════════════════════════════
 #  BACKGROUND
@@ -105,10 +391,9 @@ func setup_background():
 	add_child(background)
 
 # ══════════════════════════════════════════════════════════════
-#  RIGHT-SIDE NAV BUTTONS
+#  NAV BUTTONS
 # ══════════════════════════════════════════════════════════════
 func setup_nav_buttons():
-	var categories = ["audio", "visual", "gameplay", "statistics"]
 	var assets = {
 		"audio":      "res://assets/images/settings/audio.png",
 		"visual":     "res://assets/images/settings/visuals.png",
@@ -116,8 +401,8 @@ func setup_nav_buttons():
 		"statistics": "res://assets/images/settings/statistics.png",
 	}
 
-	for i in categories.size():
-		var cat = categories[i]
+	for i in CATEGORIES.size():
+		var cat = CATEGORIES[i]
 		var btn = TextureButton.new()
 		btn.texture_normal = load(assets[cat])
 		btn.stretch_mode = TextureButton.STRETCH_KEEP_ASPECT
@@ -129,6 +414,8 @@ func setup_nav_buttons():
 		btn.pressed.connect(func(c = cat): switch_category(c))
 
 		btn.mouse_entered.connect(func(c = cat, b = btn):
+			if not mouse_has_moved or using_controller:
+				return
 			if c != current_category:
 				b.modulate = Color(1, 1, 1, 1.0)
 				var tw = create_tween()
@@ -136,6 +423,8 @@ func setup_nav_buttons():
 				tw.tween_property(b, "scale", Vector2(1.05, 1.05), 0.12)
 		)
 		btn.mouse_exited.connect(func(c = cat, b = btn):
+			if not mouse_has_moved or using_controller:
+				return
 			if c != current_category:
 				b.modulate = Color(1, 1, 1, 0.5)
 				var tw = create_tween()
@@ -163,7 +452,7 @@ func _arrow_pos_for_row(row_index: int) -> Vector2:
 	return Vector2(x, y)
 
 # ══════════════════════════════════════════════════════════════
-#  LEFT CONTENT AREA
+#  CONTENT AREA
 # ══════════════════════════════════════════════════════════════
 func setup_content_area():
 	content_container = Control.new()
@@ -171,7 +460,7 @@ func setup_content_area():
 	content_container.size = Vector2(PANEL_W, PANEL_H)
 	add_child(content_container)
 
-	for panel_name in ["audio", "visual", "gameplay", "statistics"]:
+	for panel_name in CATEGORIES:
 		var p = Control.new()
 		p.size = Vector2(PANEL_W, PANEL_H)
 		p.visible = false
@@ -212,6 +501,8 @@ func setup_back_button():
 # ══════════════════════════════════════════════════════════════
 func switch_category(category: String):
 	current_category = category
+	ctrl_row = 0
+	_hide_highlight()
 
 	audio_panel.visible      = false
 	visual_panel.visible     = false
@@ -219,12 +510,11 @@ func switch_category(category: String):
 	statistics_panel.visible = false
 
 	for cat in category_buttons:
-		category_buttons[cat].modulate = Color(1, 1, 1, 0.5)
-		var tw = create_tween()
-		tw.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
-		tw.tween_property(category_buttons[cat], "scale", Vector2(1.0, 1.0), 0.1)
-
-	var row_order = ["audio", "visual", "gameplay", "statistics"]
+		if cat != category:
+			category_buttons[cat].modulate = Color(1, 1, 1, 0.5)
+			var tw = create_tween()
+			tw.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+			tw.tween_property(category_buttons[cat], "scale", Vector2(1.0, 1.0), 0.1)
 
 	match category:
 		"audio":      audio_panel.visible      = true
@@ -237,12 +527,17 @@ func switch_category(category: String):
 	category_buttons[category].modulate = Color(1, 1, 1, 1.0)
 	category_buttons[category].scale = Vector2(1.0, 1.0)
 
-	var row_index = row_order.find(category)
+	var row_index = CATEGORIES.find(category)
 	if nav_arrow and row_index >= 0:
 		nav_arrow.position = _arrow_pos_for_row(row_index)
+	if using_controller:
+		ctrl_cat_index = row_index
 
 # ══════════════════════════════════════════════════════════════
-#  AUDIO PANEL — perfect, no changes
+#  AUDIO PANEL
+#  Grid:
+#    row 0: [MASTER slider,  MUSIC slider ]
+#    row 1: [SFX slider,     MUTE checkbox]
 # ══════════════════════════════════════════════════════════════
 func setup_audio_panel():
 	_place_label(audio_panel, "MASTER", COL_L, ROW_TOP)
@@ -261,11 +556,18 @@ func setup_audio_panel():
 	var mute_cb = _place_checkbox(audio_panel, settings.mute_when_tabbed, COL_R, ROW_BOT + CTRL_OFFSET_Y)
 	mute_cb.toggled.connect(func(p): settings.set_mute_when_tabbed(p); settings.save_settings())
 
+	panel_grid["audio"] = [
+		[_cell("slider", master_s), _cell("slider",   music_s)],
+		[_cell("slider", sfx_s),    _cell("checkbox", mute_cb)],
+	]
+
 # ══════════════════════════════════════════════════════════════
-#  VISUAL PANEL — image assets for option values
+#  VISUAL PANEL
+#  Grid:
+#    row 0: [SCREEN MODE selector, FPS CAP selector  ]
+#    row 1: [VSYNC checkbox,       COLORBLIND selector]
 # ══════════════════════════════════════════════════════════════
 func setup_visual_panel():
-	# Asset stems must match your filenames exactly, e.g. windowed.png
 	var screen_mode_assets := ["windowed", "fullscreen", "borderless"]
 	var fps_assets         := ["30", "60", "120", "unlimited"]
 	var colorblind_assets  := ["none", "protanopia", "deuteranopia", "tritanopia"]
@@ -309,6 +611,11 @@ func setup_visual_panel():
 		_update_selector_img(cbl, colorblind_assets, settings.colorblind_mode)
 		settings.save_settings())
 
+	panel_grid["visual"] = [
+		[_cell("selector", sm),       _cell("selector", fps)],
+		[_cell("checkbox", vsync_cb), _cell("selector", cbl)],
+	]
+
 func _fps_to_index(cap: int) -> int:
 	match cap:
 		30:  return 0
@@ -325,13 +632,14 @@ func _index_to_fps(idx: int) -> int:
 
 # ══════════════════════════════════════════════════════════════
 #  GAMEPLAY PANEL
-#    Left col:  Powerup Slot 1 / 2 / 3
-#    Right col: Drop Key / Drop Assist
+#  Grid:
+#    row 0: [POWERUP 1 keybind, DROP KEY keybind   ]
+#    row 1: [POWERUP 2 keybind, DROP ASSIST checkbox]
+#    row 2: [POWERUP 3 keybind, (empty)             ]
 # ══════════════════════════════════════════════════════════════
 func setup_gameplay_panel():
 	var row_h := 120.0
 
-	# LEFT: Powerup Slot 1, 2, 3
 	_place_label(gameplay_panel, "POWERUP SLOT 1", COL_L, ROW_TOP)
 	var p1 = _place_keybind_button(gameplay_panel, settings.get_key_name(settings.powerup_key_1), COL_L, ROW_TOP + CTRL_OFFSET_Y)
 	p1.pressed.connect(func(): _start_listening("powerup_1", p1))
@@ -344,7 +652,6 @@ func setup_gameplay_panel():
 	var p3 = _place_keybind_button(gameplay_panel, settings.get_key_name(settings.powerup_key_3), COL_L, ROW_TOP + row_h * 2 + CTRL_OFFSET_Y)
 	p3.pressed.connect(func(): _start_listening("powerup_3", p3))
 
-	# RIGHT: Drop Key, Drop Assist
 	_place_label(gameplay_panel, "DROP KEY", COL_R, ROW_TOP)
 	var dk = _place_keybind_button(gameplay_panel, settings.get_key_name(settings.drop_key), COL_R, ROW_TOP + CTRL_OFFSET_Y)
 	dk.pressed.connect(func(): _start_listening("drop", dk))
@@ -353,6 +660,12 @@ func setup_gameplay_panel():
 	var da = _place_checkbox(gameplay_panel, settings.drop_assist_enabled, COL_R, ROW_TOP + row_h + CTRL_OFFSET_Y)
 	da.toggled.connect(func(p): settings.set_drop_assist(p); settings.save_settings())
 
+	panel_grid["gameplay"] = [
+		[_cell("keybind", p1), _cell("keybind",  dk)],
+		[_cell("keybind", p2), _cell("checkbox", da)],
+		[_cell("keybind", p3), _empty()],
+	]
+
 func _start_listening(slot: String, btn: Button):
 	listening_for_key = true
 	listening_slot    = slot
@@ -360,27 +673,8 @@ func _start_listening(slot: String, btn: Button):
 	btn.text     = "Press any key..."
 	btn.modulate = Color(1, 1, 0)
 
-func _unhandled_input(event):
-	if not listening_for_key:
-		return
-	if event is InputEventKey and event.pressed:
-		var key = event.keycode
-		match listening_slot:
-			"drop":      settings.set_drop_key(key)
-			"powerup_1": settings.set_powerup_key(1, key)
-			"powerup_2": settings.set_powerup_key(2, key)
-			"powerup_3": settings.set_powerup_key(3, key)
-		if listening_button:
-			listening_button.text     = settings.get_key_name(key)
-			listening_button.modulate = Color.WHITE
-		listening_for_key = false
-		listening_slot    = ""
-		listening_button  = null
-		settings.save_settings()
-		get_viewport().set_input_as_handled()
-
 # ══════════════════════════════════════════════════════════════
-#  STATISTICS PANEL — tighter rows, shifted right
+#  STATISTICS PANEL
 # ══════════════════════════════════════════════════════════════
 func setup_statistics_panel():
 	var rows = [
@@ -391,8 +685,8 @@ func setup_statistics_panel():
 		["TOTAL CURRENCY EARNED:", "0",     "Currency"],
 		["TIME PLAYED:",           "0h 0m", "TimePlayed"],
 	]
-	var row_h      := 55.0          # tighter (was 65)
-	var stat_col_l := COL_L + 40.0  # shifted right
+	var row_h      := 55.0
+	var stat_col_l := COL_L + 40.0
 	var stat_col_r := stat_col_l + 320.0
 
 	for i in rows.size():
@@ -404,6 +698,8 @@ func setup_statistics_panel():
 		val.name = rows[i][2] + "Value"
 		val.position = Vector2(stat_col_r, y)
 		statistics_panel.add_child(val)
+
+	panel_grid["statistics"] = []
 
 func update_statistics_display():
 	var clown_names = ["Tessa","Twinkles","Reina","Osvaldo","Hazel",
@@ -425,7 +721,6 @@ func _set_stat(stat_name: String, value: String):
 # ══════════════════════════════════════════════════════════════
 #  WIDGET HELPERS
 # ══════════════════════════════════════════════════════════════
-
 func _make_label(text: String, font_size: int) -> Label:
 	var lbl = Label.new()
 	lbl.text = text
@@ -445,7 +740,6 @@ func _place_label(parent: Control, text: String, x: float, y: float) -> Label:
 	parent.add_child(lbl)
 	return lbl
 
-# ── Slider (audio only) ───────────────────────────────────────
 func _place_slider(parent: Control, initial: float, x: float, y: float) -> HSlider:
 	var slider_tex = load("res://assets/images/settings/volumeslider.png")
 	var knob_tex   = load("res://assets/images/settings/volumeknob.png")
@@ -489,7 +783,6 @@ func _place_slider(parent: Control, initial: float, x: float, y: float) -> HSlid
 	parent.add_child(slider)
 	return slider
 
-# ── Checkbox ──────────────────────────────────────────────────
 func _place_checkbox(parent: Control, initial: bool, x: float, y: float) -> TextureButton:
 	var cb = TextureButton.new()
 	cb.toggle_mode    = true
@@ -524,9 +817,6 @@ func _place_checkbox(parent: Control, initial: bool, x: float, y: float) -> Text
 	parent.add_child(cb)
 	return cb
 
-# ── Image-based selector (visuals panel) ──────────────────────
-# option_names: asset filename stems, e.g. ["windowed", "fullscreen", "borderless"]
-# Loads res://assets/images/settings/<stem>.png for the displayed value
 func _place_selector_img(parent: Control, option_names: Array, current_idx: int, x: float, y: float) -> Control:
 	var arrow_size := 36.0
 
@@ -534,11 +824,11 @@ func _place_selector_img(parent: Control, option_names: Array, current_idx: int,
 	container.name = "SelectorContainer"
 	container.position = Vector2(x, y)
 	container.custom_minimum_size = Vector2(SLIDER_W, 44)
+	container.size = Vector2(SLIDER_W, 44)
 
 	var left_tex  = _scale_texture("res://assets/images/settings/arrowleft.png",  int(arrow_size))
 	var right_tex = _scale_texture("res://assets/images/settings/arrowright.png", int(arrow_size))
 
-	# Left arrow
 	var left_btn = TextureButton.new()
 	left_btn.name = "Left"
 	left_btn.ignore_texture_size = true
@@ -549,7 +839,6 @@ func _place_selector_img(parent: Control, option_names: Array, current_idx: int,
 	SettingsManager.set_hover_cursor(left_btn)
 	container.add_child(left_btn)
 
-	# Option image — the handwritten word asset
 	var img_w = SLIDER_W - arrow_size * 2 - 8
 	var option_img = TextureRect.new()
 	option_img.name = "OptionImage"
@@ -563,7 +852,6 @@ func _place_selector_img(parent: Control, option_names: Array, current_idx: int,
 	if opt_tex: option_img.texture = opt_tex
 	container.add_child(option_img)
 
-	# Right arrow
 	var right_btn = TextureButton.new()
 	right_btn.name = "Right"
 	right_btn.ignore_texture_size = true
@@ -577,14 +865,12 @@ func _place_selector_img(parent: Control, option_names: Array, current_idx: int,
 	parent.add_child(container)
 	return container
 
-# Swap the displayed image when the user clicks an arrow
 func _update_selector_img(container: Control, option_names: Array, new_idx: int):
 	var option_img = container.get_node_or_null("OptionImage")
 	if option_img:
 		var tex = load("res://assets/images/settings/" + option_names[new_idx] + ".png")
 		if tex: option_img.texture = tex
 
-# ── Keybind button — keybind_box.png asset, centered under label
 func _place_keybind_button(parent: Control, initial_text: String, x: float, y: float) -> Button:
 	var box_tex = load("res://assets/images/settings/keybind_box.png")
 
@@ -596,7 +882,6 @@ func _place_keybind_button(parent: Control, initial_text: String, x: float, y: f
 	btn.add_theme_color_override("font_outline_color", Color(0.035, 0.098, 0.247))
 	btn.add_theme_constant_override("outline_size", 4)
 	btn.custom_minimum_size = Vector2(KEYBIND_W, KEYBIND_H)
-	# Centre under the label which is SLIDER_W wide
 	btn.position = Vector2(x + (SLIDER_W - KEYBIND_W) / 2.0, y)
 
 	if box_tex:
@@ -613,7 +898,6 @@ func _place_keybind_button(parent: Control, initial_text: String, x: float, y: f
 	parent.add_child(btn)
 	return btn
 
-# ── Scale a texture to target_px × target_px ─────────────────
 func _scale_texture(path: String, target_px: int) -> Texture2D:
 	var tex = load(path)
 	if not tex: return null
@@ -626,6 +910,7 @@ func _scale_texture(path: String, target_px: int) -> Texture2D:
 #  BACK
 # ══════════════════════════════════════════════════════════════
 func _on_back_pressed():
+	Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
 	settings.save_settings()
 	if opened_from_pause_menu:
 		var pause_menu = get_parent()

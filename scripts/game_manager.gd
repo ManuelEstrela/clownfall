@@ -42,6 +42,9 @@ var van_scale: float = 0.87
 var balloon_float_amount: float = 12.0
 var balloon_float_duration: float = 4.2
 
+# ====== CONTROLLER ======
+var controller_speed: float = 800.0  # pixels per second — tweak to feel right
+
 # ================================================
 
 # Game state
@@ -78,9 +81,9 @@ var game_over_sound: AudioStreamPlayer = null
 var pop_sounds: Array[AudioStreamPlayer] = []
 
 # Collision sounds (size-grouped)
-var collision_sound_small: AudioStreamPlayer = null   # types 0-3
-var collision_sound_medium: AudioStreamPlayer = null  # types 4-6
-var collision_sound_large: AudioStreamPlayer = null   # types 7-10
+var collision_sound_small: AudioStreamPlayer = null
+var collision_sound_medium: AudioStreamPlayer = null
+var collision_sound_large: AudioStreamPlayer = null
 
 # Boundaries
 var play_area_left: float
@@ -229,7 +232,6 @@ func setup_audio():
 		add_child(pop_player)
 		pop_sounds.append(pop_player)
 
-	# Collision sounds — grouped by clown size
 	collision_sound_small = AudioStreamPlayer.new()
 	collision_sound_small.stream = load("res://assets/sounds/collision/clown_collision_1.wav")
 	collision_sound_small.volume_db = 0
@@ -280,7 +282,6 @@ func setup_ui_balloons(viewport_size: Vector2, container_scale: float):
 	score_label.position = Vector2(-80 / final_score_scale, -50 / final_score_scale)
 	score_label.size = Vector2(160 / final_score_scale, 80 / final_score_scale)
 	score_label.text = "0"
-	print("🎈 Score balloon group added at: ", score_balloon_root.position)
 
 	# ── NEXT GROUP ───────────────────────────────────────────────
 	next_balloon_root = Node2D.new()
@@ -312,7 +313,6 @@ func setup_ui_balloons(viewport_size: Vector2, container_scale: float):
 	next_balloon.add_child(next_clown_sprite)
 	next_clown_sprite.z_index = 1
 	next_clown_sprite.position = Vector2(0, 10 / final_next_scale)
-	print("🎈 Next balloon group added at: ", next_balloon_root.position)
 
 	# ── START FLOAT ANIMATIONS ───────────────────────────────────
 	_start_balloon_float(score_balloon_root, 0.0)
@@ -347,7 +347,6 @@ func add_clown_cycle_decoration(viewport_size: Vector2, container_scale: float):
 	var cycle_y = viewport_size.y - clown_cycle_y_offset
 	clown_cycle_sprite.global_position = Vector2(cycle_x, cycle_y)
 	clown_cycle_sprite.scale = Vector2(clown_cycle_scale, clown_cycle_scale) * container_scale
-	print("🎡 Clown cycle decoration added at: ", clown_cycle_sprite.global_position)
 
 func _input(event):
 	if game_over:
@@ -364,6 +363,31 @@ func _input(event):
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
 		drop_clown()
 
+	# Controller drop
+	if event.is_action_pressed("drop"):
+		drop_clown()
+
+func _process(delta):
+	if game_over:
+		return
+	_handle_controller_input(delta)
+	check_danger_zone(delta)
+
+func _handle_controller_input(delta: float):
+	if game_over or not van_sprite:
+		return
+
+	var stick_x = Input.get_axis("move_left", "move_right")
+	if abs(stick_x) > 0.1:
+		var new_x = clampf(
+			van_sprite.global_position.x + stick_x * controller_speed * delta,
+			play_area_left,
+			play_area_right
+		)
+		van_sprite.global_position.x = new_x
+		if preview_clown:
+			preview_clown.global_position.x = new_x
+
 func spawn_preview():
 	if game_over:
 		return
@@ -372,8 +396,6 @@ func spawn_preview():
 	if van_sprite:
 		start_x = van_sprite.global_position.x
 
-	var start_y = drop_y
-
 	preview_clown = ClownBallScene.instantiate()
 	add_child(preview_clown)
 	preview_clown.setup(current_clown_type)
@@ -381,7 +403,7 @@ func spawn_preview():
 	preview_clown.can_merge = false
 	preview_clown.modulate.a = 0.9
 	preview_clown.z_index = 50
-	preview_clown.global_position = Vector2(start_x, start_y)
+	preview_clown.global_position = Vector2(start_x, drop_y)
 
 func update_next_preview():
 	if next_clown_sprite:
@@ -393,7 +415,6 @@ func update_next_preview():
 		var clown_texture_size = next_clown_sprite.texture.get_width()
 		var scale_factor = target_size / clown_texture_size
 		next_clown_sprite.scale = Vector2(scale_factor, scale_factor)
-		print("🎪 Next clown updated: ", next_clown_data.name)
 
 func drop_clown():
 	if not preview_clown or not can_drop or game_over:
@@ -417,7 +438,6 @@ func drop_clown():
 	new_clown.freeze = false
 	new_clown.can_merge = true
 
-	# Track this as the last dropped clown for collision sounds
 	set_meta("last_dropped_clown", new_clown)
 
 	var settings = get_node_or_null("/root/SettingsManager")
@@ -458,9 +478,8 @@ func merge_clowns(clown1, clown2, merge_pos: Vector2, new_type: int):
 	var settings = get_node_or_null("/root/SettingsManager")
 	if settings:
 		settings.update_highest_tier(new_type)
-
-	# If one of the merging clowns was the last dropped, clear it
-	# so the newly merged clown doesn't inherit collision sounds
+		settings.add_clown_merge(new_type)
+		
 	if has_meta("last_dropped_clown"):
 		var last = get_meta("last_dropped_clown")
 		if last == clown1 or last == clown2:
@@ -479,11 +498,6 @@ func merge_clowns(clown1, clown2, merge_pos: Vector2, new_type: int):
 
 	await get_tree().create_timer(0.01).timeout
 	new_clown.apply_central_impulse(Vector2(0, -200))
-
-func _process(delta):
-	if game_over:
-		return
-	check_danger_zone(delta)
 
 func check_danger_zone(delta: float):
 	for child in get_children():
