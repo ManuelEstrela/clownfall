@@ -14,6 +14,32 @@ var collision_cooldown: float = 0.0
 const COLLISION_COOLDOWN_DURATION: float = 0.25
 const COLLISION_VELOCITY_THRESHOLD: float = 150.0
 
+# ── MERGE SAFETY NET ────────────────────────────────────────────
+# body_entered is a ONE-SHOT signal: it only fires at the instant two bodies
+# begin touching. That makes it unreliable as the sole merge trigger, because:
+#   1. If the pair touches while either is still `just_spawned`, we reject the
+#      signal — and it never fires again, since they're already in contact.
+#      The two clowns then sit there touching forever, never merging.
+#   2. body_entered isn't guaranteed to fire on BOTH bodies, so an
+#      instance-ID tiebreak can silently drop the merge entirely.
+#   3. With contact reporting capped, a clown already touching several things
+#      in a dense pile may never report the new contact at all.
+#
+# So we keep body_entered as the fast path, but also poll for touching
+# same-type neighbours a few times a second. Anything the signal missed gets
+# caught here, which makes it structurally impossible for a valid pair to
+# sit unmerged.
+const MERGE_SCAN_INTERVAL: float = 0.1
+# Extra slack (px) on the "are they touching?" distance test. Physics lets
+# bodies overlap slightly, and resting contact can leave a hairline gap, so a
+# strict radius sum would miss real contacts. Positive = more forgiving.
+const MERGE_CONTACT_TOLERANCE: float = 2.0
+var merge_scan_timer: float = 0.0
+
+# Effective collision radius, cached at setup() so the scan doesn't have to
+# dig into the shape every frame.
+var merge_radius: float = 0.0
+
 # References
 @onready var sprite: Sprite2D = $Sprite
 @onready var collision: CollisionShape2D = $Collision
@@ -54,6 +80,9 @@ func setup(type: int):
 	collision.shape.radius = radius
 	collision.position = Vector2(0, hitbox_offset_y)
 	
+	# Cache for the merge safety-net scan
+	merge_radius = radius
+	
 	print("🎪 ", data.name, " - Size: ", clown_size,
 		  " | Hitbox Scale: ", hitbox_scale,
 		  " | Radius: ", radius,
@@ -73,7 +102,11 @@ func setup(type: int):
 func _ready():
 	body_entered.connect(_on_body_entered)
 	contact_monitor = true
-	max_contacts_reported = 4
+	# Raised from 4. In a dense pile a clown can easily touch the floor, a wall,
+	# and several neighbours at once. Once the cap is hit, further contacts are
+	# silently NOT reported — so the one contact that should have triggered a
+	# merge never fires body_entered at all.
+	max_contacts_reported = 12
 	
 	await get_tree().create_timer(0.15).timeout
 	just_spawned = false
@@ -82,19 +115,80 @@ func _process(delta):
 	if collision_cooldown > 0.0:
 		collision_cooldown -= delta
 
+func _physics_process(delta):
+	# Safety net: catch any same-type neighbour we're already touching that
+	# body_entered missed (see the MERGE SAFETY NET notes above).
+	if is_merging or not can_merge or just_spawned:
+		return
+	
+	merge_scan_timer -= delta
+	if merge_scan_timer > 0.0:
+		return
+	merge_scan_timer = MERGE_SCAN_INTERVAL
+	
+	_scan_for_missed_merge()
+
+# Looks for a same-type clown we are physically overlapping/touching but never
+# merged with. Only the lower instance ID actually initiates, so a pair can't
+# both fire at once — but unlike body_entered, this runs on BOTH bodies every
+# scan, so the merge can never be silently dropped just because one body's
+# signal didn't fire.
+func _scan_for_missed_merge():
+	# Top-tier clown can't merge into anything
+	if clown_type >= CLOWNS.size() - 1:
+		return
+	
+	var parent = get_parent()
+	if not parent:
+		return
+	
+	for other in parent.get_children():
+		if other == self:
+			continue
+		if not (other is ClownBall):
+			continue
+		if other.clown_type != clown_type:
+			continue
+		if other.is_merging or not other.can_merge or other.just_spawned:
+			continue
+		if other.freeze or freeze:
+			continue
+		
+		# Are the two collision circles actually touching?
+		var contact_distance = merge_radius + other.merge_radius + MERGE_CONTACT_TOLERANCE
+		if global_position.distance_to(other.global_position) > contact_distance:
+			continue
+		
+		# Deterministic initiator so the pair can't double-merge
+		if get_instance_id() < other.get_instance_id():
+			attempt_merge(other)
+		else:
+			other.attempt_merge(self)
+		return
+
 func _on_body_entered(body):
-	# Merge logic — unchanged
 	if body is ClownBall:
-		if just_spawned or body.just_spawned:
-			return
+		# NOTE: we deliberately do NOT bail out on just_spawned here anymore.
+		# Rejecting the signal used to permanently lose the merge, because
+		# body_entered never fires again for a pair that's already in contact.
+		# The just_spawned check now lives in attempt_merge's guard chain and
+		# the safety-net scan will pick the pair up once the window expires.
 		if is_merging or not can_merge:
 			return
 		if not body.can_merge or body.is_merging:
 			return
+		if just_spawned or body.just_spawned:
+			# Not eligible yet — but do NOT drop it. The _physics_process scan
+			# will catch this pair as soon as the spawn window closes.
+			return
 		if body.clown_type == clown_type and clown_type < CLOWNS.size() - 1:
+			# Tiebreak so only one of the pair initiates. If the other body's
+			# signal is the only one that fired, the safety-net scan covers it.
 			if get_instance_id() < body.get_instance_id():
 				attempt_merge(body)
 				return  # Merge happening — skip collision sound entirely
+			else:
+				return  # Partner will initiate (or the scan will)
 		# Different clown type, no merge — play collision sound
 		_try_play_collision_sound()
 	else:
@@ -131,6 +225,17 @@ func _try_play_collision_sound():
 		collision_cooldown = COLLISION_COOLDOWN_DURATION
 
 func attempt_merge(other: ClownBall):
+	# Re-check under the wire. Both body_entered and the safety-net scan can
+	# route here, and two calls could land in the same frame, so this guard is
+	# what actually prevents a double-merge (which would spawn two clowns from
+	# one pair, or free an already-freed node).
+	if is_merging or other.is_merging:
+		return
+	if not can_merge or not other.can_merge:
+		return
+	if not is_instance_valid(other):
+		return
+	
 	is_merging = true
 	other.is_merging = true
 	can_merge = false

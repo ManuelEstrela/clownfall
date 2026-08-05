@@ -271,10 +271,19 @@ func add_time_played(seconds: float):
 # ── Per-clown merge tracking ───────────────────────────────────
 # merges_per_clown[i] = how many times clown type i has been created via merge
 var merges_per_clown: Array = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+# drops_per_clown[i] = how many times clown type i has been dropped from the van.
+# Used for the smallest clown (Tessa), who can never be produced by a merge and
+# would otherwise always show 0 progress on the collection screen.
+var drops_per_clown: Array = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 
 func add_clown_merge(clown_type: int):
 	if clown_type >= 0 and clown_type < merges_per_clown.size():
 		merges_per_clown[clown_type] += 1
+		save_settings()
+
+func add_clown_drop(clown_type: int):
+	if clown_type >= 0 and clown_type < drops_per_clown.size():
+		drops_per_clown[clown_type] += 1
 		save_settings()
 
 # ====== SAVE/LOAD ======
@@ -307,7 +316,8 @@ func save_settings():
 		"highest_tier_created": highest_tier_created,
 		"total_currency_earned": total_currency_earned,
 		"time_played_seconds": time_played_seconds,
-		"merges_per_clown": merges_per_clown
+		"merges_per_clown": merges_per_clown,
+		"drops_per_clown": drops_per_clown
 	}
 	
 	var file = FileAccess.open("user://settings.save", FileAccess.WRITE)
@@ -355,6 +365,7 @@ func load_settings():
 		total_currency_earned = save_data.get("total_currency_earned", 0)
 		time_played_seconds = save_data.get("time_played_seconds", 0.0)
 		merges_per_clown = save_data.get("merges_per_clown", [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
+		drops_per_clown = save_data.get("drops_per_clown", [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
 		
 		print("✅ Settings loaded")
 	else:

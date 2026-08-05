@@ -45,6 +45,28 @@ var balloon_float_duration: float = 4.2
 # ====== CONTROLLER ======
 var controller_speed: float = 800.0  # pixels per second — tweak to feel right
 
+# ====== MERGE FEEL ======
+# Merged clowns used to always spawn at rotation 0 (bolt upright), which made
+# every merge look identical and unnaturally tidy. These control how much the
+# new clown inherits its orientation/motion from the two clowns that made it.
+
+# How hard the merged clown pops out. (Was hardcoded as 200.)
+var merge_pop_strength: float = 200.0
+# Random tilt added on top of the inherited rotation, in radians.
+# 0.0 = child exactly matches its parents' average tilt. 0.25 ≈ ±14°.
+# Raise for messier, more chaotic spawns.
+var merge_rotation_jitter: float = 0.25
+# How much of the parents' spin the child keeps (0 = none, 1 = full).
+var merge_spin_inherit: float = 0.5
+# Random spin kick on spawn, in radians/sec.
+var merge_spin_jitter: float = 2.0
+# How much of the parents' linear velocity carries over (0–1).
+var merge_velocity_inherit: float = 0.3
+# How much the merge axis bends the pop direction away from straight up.
+# 0.0 = always straight up (old behaviour). 1.0 = fully perpendicular to the
+# axis between the two parents. 0.35 is a subtle, natural lean.
+var merge_axis_influence: float = 0.35
+
 # ================================================
 
 # Game state
@@ -443,6 +465,7 @@ func drop_clown():
 	var settings = get_node_or_null("/root/SettingsManager")
 	if settings:
 		settings.add_clowns_dropped(1)
+		settings.add_clown_drop(drop_type)
 
 	if test_mode:
 		test_clown_index += 1
@@ -460,6 +483,13 @@ func drop_clown():
 	if not game_over:
 		can_drop = true
 		spawn_preview()
+
+# Averages two angles correctly, handling the wrap at ±PI. A naive (a + b) / 2
+# would turn 179° and -179° (which are 2° apart) into 0° — snapping the child
+# bolt upright, which is exactly the bug we're fixing. angle_difference() takes
+# the short way around the circle instead.
+func _average_angle(a: float, b: float) -> float:
+	return a + angle_difference(a, b) / 2.0
 
 func merge_clowns(clown1, clown2, merge_pos: Vector2, new_type: int):
 	print("Merging! Type: ", new_type)
@@ -479,7 +509,17 @@ func merge_clowns(clown1, clown2, merge_pos: Vector2, new_type: int):
 	if settings:
 		settings.update_highest_tier(new_type)
 		settings.add_clown_merge(new_type)
-		
+
+	# ── Capture the parents' orientation/motion BEFORE they're freed ──
+	# The new clown inherits the average tilt of the two clowns that made it,
+	# so it's born leaning the way they were leaning instead of always snapping
+	# upright. We also keep some of their spin and velocity so the merge carries
+	# its own momentum, and remember the axis they were sitting along.
+	var merge_rotation = _average_angle(clown1.rotation, clown2.rotation)
+	var inherited_spin = (clown1.angular_velocity + clown2.angular_velocity) / 2.0
+	var inherited_velocity = (clown1.linear_velocity + clown2.linear_velocity) / 2.0
+	var merge_axis = (clown2.global_position - clown1.global_position).normalized()
+
 	if has_meta("last_dropped_clown"):
 		var last = get_meta("last_dropped_clown")
 		if last == clown1 or last == clown2:
@@ -494,10 +534,22 @@ func merge_clowns(clown1, clown2, merge_pos: Vector2, new_type: int):
 	add_child(new_clown)
 	new_clown.setup(new_type)
 	new_clown.global_position = merge_pos
+	new_clown.rotation = merge_rotation + randf_range(-merge_rotation_jitter, merge_rotation_jitter)
 	new_clown.freeze = false
 
 	await get_tree().create_timer(0.01).timeout
-	new_clown.apply_central_impulse(Vector2(0, -200))
+
+	# Pop mostly upward, but nudged perpendicular to the merge axis, so a
+	# side-by-side merge pops differently than a stacked one.
+	var pop_dir = Vector2(0, -1).lerp(
+		Vector2(-merge_axis.y, merge_axis.x),
+		merge_axis_influence
+	).normalized()
+	new_clown.apply_central_impulse(
+		pop_dir * merge_pop_strength + inherited_velocity * merge_velocity_inherit
+	)
+	new_clown.angular_velocity = inherited_spin * merge_spin_inherit \
+		+ randf_range(-merge_spin_jitter, merge_spin_jitter)
 
 func check_danger_zone(delta: float):
 	for child in get_children():

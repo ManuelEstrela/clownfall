@@ -491,6 +491,13 @@ func merge_clowns(clown1, clown2, merge_pos: Vector2, new_type: int):
 	if score_label:
 		score_label.text = str(score)
 	
+	# Track this merge so the collection screen updates (Tessa is drop-tracked
+	# separately in drop_clown; every other clown counts merges here).
+	var settings = get_node_or_null("/root/SettingsManager")
+	if settings:
+		settings.update_highest_tier(new_type)
+		settings.add_clown_merge(new_type)
+	
 	clown1.queue_free()
 	clown2.queue_free()
 	
@@ -529,6 +536,12 @@ func drop_clown():
 	new_clown.setup(drop_type)
 	new_clown.global_position = Vector2(drop_x, drop_y)
 	new_clown.freeze = false
+	
+	# Record the drop per clown type (used for Tessa's collection progress)
+	var settings = get_node_or_null("/root/SettingsManager")
+	if settings:
+		settings.add_clowns_dropped(1)
+		settings.add_clown_drop(drop_type)
 	
 	if is_zero_gravity_active:
 		new_clown.gravity_scale = 0.1

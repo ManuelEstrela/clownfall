@@ -81,6 +81,11 @@ const CLICK_VS_DRAG_THRESHOLD := 6.0
 const TOP_ROW_COUNT := 8
 const BOTTOM_ROW_COUNT := 3
 
+# Index of the smallest clown (Tessa). She is only ever dropped from the van —
+# she can never be produced by a merge — so her progress counts total DROPS of
+# Tessa instead of merges. Every other clown counts merges as usual.
+const DROP_COUNTED_CLOWN_INDEX := 0
+
 const CLOWN_NAMES = ["Tessa", "Twinkles", "Reina", "Osvaldo", "Hazel",
 	"Mumbles", "Sneaky", "Wendy", "Chatty", "Cups", "Kirk"]
 
@@ -118,6 +123,10 @@ var _velocity: float = 0.0          # pixels/second, signed
 var _last_mouse_x: float = 0.0
 var _last_motion_time: float = 0.0
 var _momentum_active: bool = false
+# Set once we've started leaving this screen, so a second Escape press (or a
+# stray _process/tween callback firing during scene-change teardown) can't run
+# against nodes that are already being freed.
+var _navigating_away: bool = false
 const MOMENTUM_FRICTION := 4.0      # higher = stops sooner
 const MOMENTUM_MIN_VELOCITY := 40.0 # below this, momentum just stops
 const MOMENTUM_MAX_VELOCITY := 4000.0  # clamp so a huge flick doesn't fly off screen
@@ -143,13 +152,24 @@ func _ready():
 # Pressing Escape (or Circle on a PS4 controller, since ui_cancel is
 # mapped to both) returns to the main menu, same pattern as your
 # other menu screens.
+#
+# NOTE: set_input_as_handled() is called BEFORE _on_back_pressed().
+# _on_back_pressed() changes the scene, which frees this node — after
+# that get_viewport() returns null and calling set_input_as_handled()
+# on it crashes ("Cannot call method ... on a null value"). Marking the
+# input handled first avoids that.
 func _input(event):
+	if _navigating_away:
+		return
 	if event.is_action_pressed("ui_cancel"):
-		_on_back_pressed()
 		get_viewport().set_input_as_handled()
+		_on_back_pressed()
 
 func _process(delta: float):
-	if not _momentum_active:
+	if _navigating_away or not _momentum_active:
+		return
+	if not is_instance_valid(scroll_container):
+		_momentum_active = false
 		return
 
 	# Apply current velocity to scroll position
@@ -565,10 +585,20 @@ func _add_card_overlays(card: Control, clown_index: int, width: float, height: f
 	stars_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	card.add_child(stars_label)
 
+# Returns the progress numbers for a clown's card.
+#
+# For the smallest clown (Tessa, DROP_COUNTED_CLOWN_INDEX) we read the total
+# number of times she has been DROPPED, since she can never be produced by a
+# merge. Every other clown reads its merge count. The goal thresholds are the
+# same either way — only the source of the current count changes.
 func _get_progress_for(clown_index: int) -> Dictionary:
 	var total_merges = 0
-	if settings and clown_index < settings.merges_per_clown.size():
-		total_merges = settings.merges_per_clown[clown_index]
+	if settings:
+		if clown_index == DROP_COUNTED_CLOWN_INDEX:
+			if clown_index < settings.drops_per_clown.size():
+				total_merges = settings.drops_per_clown[clown_index]
+		elif clown_index < settings.merges_per_clown.size():
+			total_merges = settings.merges_per_clown[clown_index]
 
 	var goal_data = ClownCollectionData.get_current_goal(clown_index, total_merges)
 	return {
@@ -614,4 +644,9 @@ func _on_card_clicked(clown_index: int):
 	# TODO: open lore panel/popup here
 
 func _on_back_pressed():
+	if _navigating_away:
+		return
+	_navigating_away = true
+	_momentum_active = false
+	_dragging = false
 	get_tree().change_scene_to_file("res://scenes/main_menu.tscn")
