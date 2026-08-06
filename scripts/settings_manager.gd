@@ -30,6 +30,20 @@ var highest_tier_created: int = 0  # 0-10 (Tessa to Kirk)
 var total_currency_earned: int = 0
 var time_played_seconds: float = 0.0
 
+# ====== THEMES & STARS ======
+# Stars are NOT stored as an earned total — they're derived from the
+# collection counters (see get_total_stars_earned). That means the earned
+# figure can only ever go up, so spending has to be tracked separately and
+# subtracted. Deriving rather than storing also means the two screens can
+# never disagree about how many you've earned.
+var stars_spent: int = 0
+
+const THEME_IDS := ["purple", "blue", "pink", "red", "yellow", "green"]
+const DEFAULT_THEME := "purple"
+
+var unlocked_themes: Array = [DEFAULT_THEME]
+var current_theme: String = DEFAULT_THEME
+
 # Audio buses
 var master_bus: int = AudioServer.get_bus_index("Master")
 var music_bus: int = AudioServer.get_bus_index("Music") if AudioServer.get_bus_index("Music") != -1 else 0
@@ -286,6 +300,89 @@ func add_clown_drop(clown_type: int):
 		drops_per_clown[clown_type] += 1
 		save_settings()
 
+# ====== STARS ======
+#
+# Earned stars are computed from the collection counters rather than stored,
+# so this can never drift out of sync with what the collection screen shows.
+# Tessa is counted by DROPS (she can't be produced by a merge); everyone else
+# by merges — same rule the collection screen uses.
+func get_total_stars_earned() -> int:
+	var total := 0
+	for i in range(merges_per_clown.size()):
+		var count = drops_per_clown[i] if i == 0 else merges_per_clown[i]
+		total += ClownCollectionData.get_stars_earned(i, count)
+	return total
+
+func get_available_stars() -> int:
+	return maxi(0, get_total_stars_earned() - stars_spent)
+
+func spend_stars(amount: int) -> bool:
+	if amount <= 0:
+		return true
+	if get_available_stars() < amount:
+		return false
+	stars_spent += amount
+	save_settings()
+	return true
+
+# ====== THEMES ======
+
+func is_theme_unlocked(theme_id: String) -> bool:
+	return unlocked_themes.has(theme_id)
+
+func get_locked_themes() -> Array:
+	var locked: Array = []
+	for id in THEME_IDS:
+		if not unlocked_themes.has(id):
+			locked.append(id)
+	return locked
+
+func unlock_theme(theme_id: String) -> bool:
+	if not THEME_IDS.has(theme_id) or unlocked_themes.has(theme_id):
+		return false
+	unlocked_themes.append(theme_id)
+	save_settings()
+	return true
+
+func set_current_theme(theme_id: String):
+	if not unlocked_themes.has(theme_id):
+		return
+	current_theme = theme_id
+	save_settings()
+
+# Unlocked themes in THEME_IDS order, so cycling is stable rather than
+# following whatever order they happened to be unlocked in.
+func get_unlocked_themes_ordered() -> Array:
+	var ordered: Array = []
+	for id in THEME_IDS:
+		if unlocked_themes.has(id):
+			ordered.append(id)
+	return ordered
+
+# step of -1 or +1, wrapping at both ends. Returns the new theme id.
+func cycle_theme(step: int) -> String:
+	var ordered = get_unlocked_themes_ordered()
+	if ordered.size() <= 1:
+		return current_theme
+	var index = ordered.find(current_theme)
+	if index == -1:
+		index = 0
+	index = wrapi(index + step, 0, ordered.size())
+	set_current_theme(ordered[index])
+	return current_theme
+
+# ── DEBUG ─────────────────────────────────────────────────────
+# Wipes theme unlocks and refunds every star spent, so the shop can be
+# tested from scratch. Deliberately leaves merge/drop counters alone —
+# those are the earned progress and shouldn't be thrown away to test a
+# purchase flow. Called from the shop screen's debug hotkey.
+func debug_reset_themes():
+	unlocked_themes = [DEFAULT_THEME]
+	current_theme = DEFAULT_THEME
+	stars_spent = 0
+	save_settings()
+	print("🧪 Theme unlocks reset, stars refunded")
+
 # ====== SAVE/LOAD ======
 
 func save_settings():
@@ -317,7 +414,12 @@ func save_settings():
 		"total_currency_earned": total_currency_earned,
 		"time_played_seconds": time_played_seconds,
 		"merges_per_clown": merges_per_clown,
-		"drops_per_clown": drops_per_clown
+		"drops_per_clown": drops_per_clown,
+
+		# Themes & shop
+		"stars_spent": stars_spent,
+		"unlocked_themes": unlocked_themes,
+		"current_theme": current_theme
 	}
 	
 	var file = FileAccess.open("user://settings.save", FileAccess.WRITE)
@@ -366,6 +468,18 @@ func load_settings():
 		time_played_seconds = save_data.get("time_played_seconds", 0.0)
 		merges_per_clown = save_data.get("merges_per_clown", [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
 		drops_per_clown = save_data.get("drops_per_clown", [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
+
+		# Themes & shop
+		stars_spent = save_data.get("stars_spent", 0)
+		unlocked_themes = save_data.get("unlocked_themes", [DEFAULT_THEME])
+		current_theme = save_data.get("current_theme", DEFAULT_THEME)
+		# A save from before themes existed, or a hand-edited one, could leave
+		# the active theme locked or unknown — fall back rather than trying to
+		# load textures for a colour that has no assets.
+		if not unlocked_themes.has(current_theme) or not THEME_IDS.has(current_theme):
+			current_theme = DEFAULT_THEME
+		if not unlocked_themes.has(DEFAULT_THEME):
+			unlocked_themes.append(DEFAULT_THEME)
 		
 		print("✅ Settings loaded")
 	else:

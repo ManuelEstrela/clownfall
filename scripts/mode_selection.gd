@@ -17,12 +17,53 @@ var button_hover_sound: AudioStreamPlayer = null
 var button_click_sound: AudioStreamPlayer = null
 var start_game_sound: AudioStreamPlayer = null
 
+# ══════════════════════════════════════════════════════════════════════
+#  LAYOUT
+#
+#  Everything is mirrored around the viewport's horizontal centre rather
+#  than hardcoded to fixed x values, so the whole screen stays centred if
+#  the resolution ever changes and the two cards can't drift apart.
+#
+#  Deliberately NOT using HBoxContainer or anchors here. A container owns
+#  its children's position and size, and it fights the hover tween — that's
+#  the usual reason "centre it" and "keep the hover animation" feel like
+#  they can't both work. Manual positioning keeps the tweens untouched.
+# ══════════════════════════════════════════════════════════════════════
+
+var card_size: Vector2 = Vector2(400, 290)
+var card_gap: float = 80.0            # horizontal space between the two cards
+var card_y: float = 210.0
+var title_center_y: float = 525.0     # vertical CENTRE of both mode titles
+var classic_title_width: float = 240.0
+var chaos_title_width: float = 220.0
+var gamemode_title_width: float = 450.0
+var gamemode_title_y: float = 55.0
+var start_button_y: float = 550.0
+
+# ====== SCALE STATES ======
+# Mode cards. Idle is what both cards sit at on load, so "nothing selected"
+# looks identical to "deselected" — set mode_scale_idle to 0.9 if you'd
+# rather the unpicked card visibly shrink away from the picked one.
+var mode_scale_idle: float = 1.0
+var mode_scale_hover: float = 1.05
+var mode_scale_selected: float = 1.1
+
+# Start button. It sits small until a mode is picked, then grows slightly to
+# signal it's live. Hover multiplies whichever of the two it's currently at.
+var start_scale_idle: float = 0.5
+var start_scale_ready: float = 0.56
+var start_hover_multiplier: float = 1.15
+
 # Two separate controllers:
 # mode_controller handles left/right between classic and chaos (horizontal)
 # start_controller handles the start button (just confirm)
 var mode_controller: MenuController
 var start_controller: MenuController
-var active_controller_area: int = 0  # 0 = modes, 1 = start button
+# -1 = mouse mode. Starting here means nothing is selected on load, and the
+# first controller input picks classic rather than doing nothing.
+var active_controller_area: int = -1
+
+var start_button_hovered: bool = false
 
 var nav_cooldown: float = 0.0
 const NAV_COOLDOWN_TIME: float = 0.25
@@ -61,6 +102,11 @@ func setup_sounds():
 func setup_ui():
 	var viewport_size = get_viewport_rect().size
 
+	# Every horizontal position on this screen derives from these three.
+	var center_x = viewport_size.x / 2.0
+	var classic_center_x = center_x - (card_size.x + card_gap) / 2.0
+	var chaos_center_x = center_x + (card_size.x + card_gap) / 2.0
+
 	# === GAMEMODE TITLE ===
 	gamemode_title = TextureRect.new()
 	gamemode_title.texture = load("res://assets/images/gamemode_title.png")
@@ -69,19 +115,20 @@ func setup_ui():
 	add_child(gamemode_title)
 
 	if gamemode_title.texture:
-		var title_width = 450
 		var title_ratio = gamemode_title.texture.get_height() / float(gamemode_title.texture.get_width())
-		gamemode_title.size = Vector2(title_width, title_width * title_ratio)
-		gamemode_title.position = Vector2((viewport_size.x - title_width) / 2, 55)
+		gamemode_title.size = Vector2(gamemode_title_width, gamemode_title_width * title_ratio)
+		gamemode_title.position = Vector2(center_x - gamemode_title_width / 2.0, gamemode_title_y)
 
 	# === CLASSIC MODE ===
 	classic_image = TextureRect.new()
 	classic_image.texture = load("res://assets/images/classic_image.png")
 	classic_image.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	classic_image.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	classic_image.size = Vector2(400, 290)
-	classic_image.position = Vector2(200, 210)
-	classic_image.pivot_offset = classic_image.size / 2
+	classic_image.size = card_size
+	classic_image.position = Vector2(classic_center_x - card_size.x / 2.0, card_y)
+	# pivot at the centre means the hover tween grows the card outward from
+	# its middle instead of shoving it right and down.
+	classic_image.pivot_offset = card_size / 2.0
 	classic_image.mouse_filter = Control.MOUSE_FILTER_STOP
 	classic_image.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 	add_child(classic_image)
@@ -110,10 +157,7 @@ func setup_ui():
 	add_child(classic_title)
 
 	if classic_title.texture:
-		var w = 240
-		classic_title.size = Vector2(w, w * classic_title.texture.get_height() / float(classic_title.texture.get_width()))
-		classic_title.position = Vector2(270, 495)
-		classic_title.pivot_offset = classic_title.size / 2
+		_place_title(classic_title, classic_title_width, classic_center_x)
 
 	classic_title.gui_input.connect(func(event):
 		if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
@@ -135,9 +179,9 @@ func setup_ui():
 	chaos_image.texture = load("res://assets/images/chaos_image.png")
 	chaos_image.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	chaos_image.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	chaos_image.size = Vector2(400, 290)
-	chaos_image.position = Vector2(680, 210)
-	chaos_image.pivot_offset = chaos_image.size / 2
+	chaos_image.size = card_size
+	chaos_image.position = Vector2(chaos_center_x - card_size.x / 2.0, card_y)
+	chaos_image.pivot_offset = card_size / 2.0
 	chaos_image.mouse_filter = Control.MOUSE_FILTER_STOP
 	chaos_image.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 	add_child(chaos_image)
@@ -166,10 +210,7 @@ func setup_ui():
 	add_child(chaos_title)
 
 	if chaos_title.texture:
-		var w = 220
-		chaos_title.size = Vector2(w, w * chaos_title.texture.get_height() / float(chaos_title.texture.get_width()))
-		chaos_title.position = Vector2(780, 489)
-		chaos_title.pivot_offset = chaos_title.size / 2
+		_place_title(chaos_title, chaos_title_width, chaos_center_x)
 
 	chaos_title.gui_input.connect(func(event):
 		if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
@@ -192,15 +233,30 @@ func setup_ui():
 	add_child(start_button)
 
 	if start_button.texture_normal:
-		var button_scale = 0.5
+		var button_scale = start_scale_idle
 		start_button_base_scale = button_scale
 		var texture_width = start_button.texture_normal.get_width()
 		var texture_height = start_button.texture_normal.get_height()
 		start_button.scale = Vector2(button_scale, button_scale)
 		start_button.pivot_offset = Vector2(texture_width / 2.0, texture_height / 2.0)
+
+		# A scaled Control does NOT draw at `position`. Godot maps a local
+		# point v to:  position + pivot_offset + (v - pivot_offset) * scale
+		# With the pivot at the texture's centre, the drawn centre lands at
+		# position + pivot_offset — the scale cancels out entirely.
+		#
+		# So centring means subtracting the FULL half-width, not the scaled
+		# half-width. The old code subtracted (texture_width / 2) * scale,
+		# which left the button sitting texture_width / 4 too far right —
+		# about 150px at this texture size, which is what you were seeing.
+		#
+		# The upside of pivoting at the centre: the hover tween scales the
+		# button in place, because the drawn centre doesn't depend on scale.
+		# Move the pivot to fix centring and the hover starts sliding the
+		# button around instead.
 		start_button.position = Vector2(
-			viewport_size.x / 2.0 - (texture_width / 2.0) * button_scale,
-			550.0
+			center_x - texture_width / 2.0,
+			start_button_y
 		)
 
 	start_button.pressed.connect(_on_start_pressed)
@@ -221,6 +277,21 @@ func setup_ui():
 
 	print("✅ UI setup complete")
 
+# Sizes a mode title from its texture's aspect ratio, then centres it under
+# its card and on the shared title centre line. The two titles have different
+# widths (the words aren't the same length), so aligning their TOPS would
+# leave them sitting at visibly different heights — centres are what should
+# match, not tops.
+func _place_title(title: TextureRect, title_width: float, center_of_card_x: float):
+	var ratio = title.texture.get_height() / float(title.texture.get_width())
+	var title_height = title_width * ratio
+	title.size = Vector2(title_width, title_height)
+	title.position = Vector2(
+		center_of_card_x - title_width / 2.0,
+		title_center_y - title_height / 2.0
+	)
+	title.pivot_offset = title.size / 2.0
+
 func _any_controller_active() -> bool:
 	return (mode_controller and mode_controller.using_controller) or \
 		   (start_controller and start_controller.using_controller)
@@ -229,13 +300,37 @@ func _process(delta):
 	if nav_cooldown > 0.0:
 		nav_cooldown -= delta
 
+# project.godot binds Escape to "ui-cancel" — with a HYPHEN, alongside
+# ui-up / ui-down / ui-confirm / ui-pause. This screen was checking Godot's
+# built-in "ui_cancel" with an underscore, which isn't the action the key is
+# mapped to, so Escape did nothing here. All three checks are guarded so this
+# keeps working whichever way the input map is edited later.
+func _is_back_pressed(event) -> bool:
+	if InputMap.has_action("ui-cancel") and event.is_action_pressed("ui-cancel"):
+		return true
+	if InputMap.has_action("ui_cancel") and event.is_action_pressed("ui_cancel"):
+		return true
+	if event is InputEventKey and event.pressed and not event.echo \
+		and event.keycode == KEY_ESCAPE:
+		return true
+	return false
+
 func _input(event):
 	if is_transitioning:
 		return
 
-	if event.is_action_pressed("ui_cancel"):
+	if _is_back_pressed(event):
+		# Consume the event BEFORE swapping scenes, and guard the viewport.
+		# change_scene_to_file() tears this scene down, and once this node is
+		# out of the tree get_viewport() returns null — which is exactly the
+		# "Cannot call method set_input_as_handled on a null value" error.
+		# is_transitioning also stops a second Escape from firing a second
+		# scene change while the first is still resolving.
+		is_transitioning = true
+		var vp = get_viewport()
+		if vp:
+			vp.set_input_as_handled()
 		get_tree().change_scene_to_file("res://scenes/main_menu.tscn")
-		get_viewport().set_input_as_handled()
 		return
 
 	# Mouse → clear any controller highlights
@@ -313,31 +408,49 @@ func select_mode(mode: String):
 		animate_selection(chaos_image, chaos_title, true)
 		animate_selection(classic_image, classic_title, false)
 		print("🎪 Chaos mode selected")
+	refresh_start_button()
 
 func animate_hover(image: TextureRect, title: TextureRect, is_hovering: bool):
 	var tween = create_tween()
 	tween.set_parallel(true)
 	tween.set_ease(Tween.EASE_OUT)
 	tween.set_trans(Tween.TRANS_SINE)
-	var s = Vector2(1.05, 1.05) if is_hovering else Vector2(1.0, 1.0)
-	tween.tween_property(image, "scale", s, 0.2)
-	tween.tween_property(title, "scale", s, 0.2)
+	var v = mode_scale_hover if is_hovering else mode_scale_idle
+	tween.tween_property(image, "scale", Vector2(v, v), 0.2)
+	tween.tween_property(title, "scale", Vector2(v, v), 0.2)
 
 func animate_selection(image: TextureRect, title: TextureRect, is_selected: bool):
 	var tween = create_tween()
 	tween.set_parallel(true)
 	tween.set_ease(Tween.EASE_OUT)
 	tween.set_trans(Tween.TRANS_BACK)
-	var s = Vector2(1.1, 1.1) if is_selected else Vector2(0.9, 0.9)
-	tween.tween_property(image, "scale", s, 0.3)
-	tween.tween_property(title, "scale", s, 0.3)
+	var v = mode_scale_selected if is_selected else mode_scale_idle
+	tween.tween_property(image, "scale", Vector2(v, v), 0.3)
+	tween.tween_property(title, "scale", Vector2(v, v), 0.3)
 
-func animate_button_hover(button: TextureButton, is_hovering: bool):
-	var target = Vector2(start_button_base_scale * 1.15, start_button_base_scale * 1.15) if is_hovering else Vector2(start_button_base_scale, start_button_base_scale)
+# The start button's size is derived from two independent things: whether a
+# mode is selected (small → ready) and whether it's being hovered. Working it
+# out from state each time avoids the two fighting — e.g. picking a mode
+# while the cursor already rests on the button.
+func start_button_target_scale() -> float:
+	var base = start_scale_ready if selected_mode != "" else start_scale_idle
+	if start_button_hovered or active_controller_area == 1:
+		base *= start_hover_multiplier
+	return base
+
+func refresh_start_button():
+	if start_button == null:
+		return
+	var v = start_button_target_scale()
+	start_button_base_scale = start_scale_ready if selected_mode != "" else start_scale_idle
 	var tween = create_tween()
 	tween.set_ease(Tween.EASE_OUT)
 	tween.set_trans(Tween.TRANS_BACK)
-	tween.tween_property(button, "scale", target, 0.2)
+	tween.tween_property(start_button, "scale", Vector2(v, v), 0.2)
+
+func animate_button_hover(_button: TextureButton, is_hovering: bool):
+	start_button_hovered = is_hovering
+	refresh_start_button()
 
 func _on_start_pressed():
 	if is_transitioning:

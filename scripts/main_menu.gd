@@ -16,14 +16,34 @@ var menu_controller: MenuController
 var hover_sound: AudioStreamPlayer = null
 var click_sound: AudioStreamPlayer = null
 
-# ── Collection button (built entirely in code, corner placement) ──
+# ── Corner buttons (built entirely in code, corner placement) ──
 var collection_button: TextureButton = null
+var shop_button: TextureButton = null
+var wishlist_button: TextureButton = null
+var discord_button: TextureButton = null
+var credits_button: TextureButton = null
+
 const COLLECTION_BTN_SCALE: float = 0.55
 const COLLECTION_BTN_MARGIN_X: float = 40.0
 const COLLECTION_BTN_MARGIN_Y: float = 40.0
+# Gap between neighbouring corner buttons, in final (scaled) pixels.
+const CORNER_BTN_GAP: float = 14.0
+# Placeholder size used until a real asset exists for a button.
+const CORNER_BTN_PLACEHOLDER_SIZE := Vector2(160, 70)
 # Path to the real asset once you have it — falls back to a placeholder
 # ColorRect with a label if this file doesn't exist yet.
 const COLLECTION_BTN_ASSET := "res://assets/images/button_collection.png"
+# Drop a real asset at any of these paths and that button switches from the
+# coloured placeholder to the artwork automatically — no code change needed.
+const SHOP_BTN_ASSET := "res://assets/images/button_shop.png"
+const WISHLIST_BTN_ASSET := "res://assets/images/button_wishlist.png"
+const DISCORD_BTN_ASSET := "res://assets/images/button_discord.png"
+const CREDITS_BTN_ASSET := "res://assets/images/button_credits.png"
+
+# Opened by the Discord button. Swap for your real invite.
+const DISCORD_URL := "https://discord.gg/your-invite-here"
+# Opened by the Wishlist button. Fill in once you have a Steam app page.
+const WISHLIST_URL := ""
 
 func _ready():
 	print("=== Main Menu Loading ===")
@@ -61,7 +81,7 @@ func _ready():
 		bgm.play()
 
 	setup_sounds()
-	setup_collection_button()
+	setup_corner_buttons()
 
 	buttons_initialized = true
 
@@ -69,7 +89,7 @@ func _ready():
 	menu_controller = MenuController.new()
 	menu_controller.setup(
 		self,
-		[play_button, settings_button, collection_button, exit_button],
+		[play_button, settings_button, collection_button, shop_button, exit_button],
 		Vector2(button_base_scale, button_base_scale),
 		Vector2(button_base_scale * 1.2, button_base_scale * 1.2),
 		hover_sound
@@ -95,52 +115,98 @@ func setup_sounds():
 	exit_button.pressed.connect(func(): click_sound.play())
 
 # ══════════════════════════════════════════════════════════════
-#  COLLECTION BUTTON — built fully in code, corner placement
+#  CORNER BUTTONS — built fully in code
+#
+#  Bottom-left:  CLOWNS, SHOP
+#  Bottom-right: WISHLIST, DISCORD, CREDITS
+#
+#  All five go through the same builder. Each falls back to a coloured
+#  rectangle with its name on it when its asset is missing, so the new
+#  ones are placeholders today and become artwork the moment a file
+#  appears at the matching path.
 # ══════════════════════════════════════════════════════════════
-func setup_collection_button():
-	collection_button = TextureButton.new()
+func setup_corner_buttons():
+	collection_button = _build_corner_button("CLOWNS", COLLECTION_BTN_ASSET, Color(0.5, 0.3, 0.7, 0.9))
+	shop_button = _build_corner_button("SHOP", SHOP_BTN_ASSET, Color(0.85, 0.45, 0.15, 0.9))
+	wishlist_button = _build_corner_button("WISHLIST", WISHLIST_BTN_ASSET, Color(0.2, 0.45, 0.75, 0.9))
+	discord_button = _build_corner_button("DISCORD", DISCORD_BTN_ASSET, Color(0.35, 0.40, 0.85, 0.9))
+	credits_button = _build_corner_button("CREDITS", CREDITS_BTN_ASSET, Color(0.55, 0.25, 0.35, 0.9))
 
-	var texture = load(COLLECTION_BTN_ASSET) if ResourceLoader.exists(COLLECTION_BTN_ASSET) else null
+	collection_button.pressed.connect(_on_collection_pressed)
+	shop_button.pressed.connect(_on_shop_pressed)
+	wishlist_button.pressed.connect(_on_wishlist_pressed)
+	discord_button.pressed.connect(_on_discord_pressed)
+	credits_button.pressed.connect(_on_credits_pressed)
+
+	position_corner_buttons()
+
+func _build_corner_button(label_text: String, asset_path: String, placeholder_color: Color) -> TextureButton:
+	var button = TextureButton.new()
+
+	var texture = load(asset_path) if ResourceLoader.exists(asset_path) else null
 
 	if texture:
-		collection_button.texture_normal = texture
-		collection_button.ignore_texture_size = true
-		collection_button.stretch_mode = TextureButton.STRETCH_KEEP_ASPECT_CENTERED
-		collection_button.custom_minimum_size = Vector2(texture.get_width(), texture.get_height())
+		button.texture_normal = texture
+		button.ignore_texture_size = true
+		button.stretch_mode = TextureButton.STRETCH_KEEP_ASPECT_CENTERED
+		button.custom_minimum_size = Vector2(texture.get_width(), texture.get_height())
 	else:
 		# Placeholder look until the real asset exists
-		collection_button.custom_minimum_size = Vector2(160, 70)
+		button.custom_minimum_size = CORNER_BTN_PLACEHOLDER_SIZE
 		var placeholder = ColorRect.new()
-		placeholder.color = Color(0.5, 0.3, 0.7, 0.9)
-		placeholder.size = collection_button.custom_minimum_size
+		placeholder.color = placeholder_color
+		placeholder.size = button.custom_minimum_size
 		placeholder.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		collection_button.add_child(placeholder)
+		button.add_child(placeholder)
 
 		var label = Label.new()
-		label.text = "CLOWNS"
+		label.text = label_text
 		label.add_theme_font_size_override("font_size", 22)
 		label.add_theme_color_override("font_color", Color(1, 1, 1))
 		label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-		label.size = collection_button.custom_minimum_size
+		label.size = button.custom_minimum_size
 		label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		collection_button.add_child(label)
+		button.add_child(label)
 
-	# Bottom-left corner placement
+	button.pivot_offset = button.custom_minimum_size / 2.0
+	button.scale = Vector2(COLLECTION_BTN_SCALE, COLLECTION_BTN_SCALE)
+	add_child(button)
+
+	SettingsManager.set_hover_cursor(button)
+	button.mouse_entered.connect(func(): hover_sound.play())
+	button.pressed.connect(func(): click_sound.play())
+	return button
+
+# Buttons are laid out in SCALED pixels. A TextureButton's `size` ignores
+# `scale`, so using custom_minimum_size directly would leave gaps roughly
+# twice as wide as intended at 0.55 scale.
+func position_corner_buttons():
+	if not collection_button:
+		return
+
 	var viewport_size = get_viewport_rect().size
-	collection_button.pivot_offset = collection_button.custom_minimum_size / 2.0
-	collection_button.scale = Vector2(COLLECTION_BTN_SCALE, COLLECTION_BTN_SCALE)
-	collection_button.position = Vector2(
-		COLLECTION_BTN_MARGIN_X,
-		viewport_size.y - COLLECTION_BTN_MARGIN_Y - collection_button.custom_minimum_size.y * COLLECTION_BTN_SCALE
-	)
+	var row_y = viewport_size.y - COLLECTION_BTN_MARGIN_Y \
+		- CORNER_BTN_PLACEHOLDER_SIZE.y * COLLECTION_BTN_SCALE
 
-	add_child(collection_button)
+	# ── Bottom-left, running rightward ──
+	var x = COLLECTION_BTN_MARGIN_X
+	for button in [collection_button, shop_button]:
+		if not button:
+			continue
+		button.position = Vector2(x, row_y)
+		x += button.custom_minimum_size.x * COLLECTION_BTN_SCALE + CORNER_BTN_GAP
 
-	SettingsManager.set_hover_cursor(collection_button)
-	collection_button.mouse_entered.connect(func(): hover_sound.play())
-	collection_button.pressed.connect(func(): click_sound.play())
-	collection_button.pressed.connect(_on_collection_pressed)
+	# ── Bottom-right, laid out right to left so the row ends flush with
+	#    the margin regardless of how wide each button turns out to be ──
+	var right_x = viewport_size.x - COLLECTION_BTN_MARGIN_X
+	for button in [credits_button, discord_button, wishlist_button]:
+		if not button:
+			continue
+		var width = button.custom_minimum_size.x * COLLECTION_BTN_SCALE
+		right_x -= width
+		button.position = Vector2(right_x, row_y)
+		right_x -= CORNER_BTN_GAP
 
 func update_layout():
 	var viewport_size = get_viewport_rect().size
@@ -157,12 +223,8 @@ func update_layout():
 	button_container.position.x = (viewport_size.x - button_container.size.x) / 2
 	button_container.position.y = viewport_size.y * 0.35
 
-	# Reposition collection button if it already exists (e.g. on resize)
-	if collection_button:
-		collection_button.position = Vector2(
-			COLLECTION_BTN_MARGIN_X,
-			viewport_size.y - COLLECTION_BTN_MARGIN_Y - collection_button.custom_minimum_size.y * COLLECTION_BTN_SCALE
-		)
+	# Reposition the corner buttons if they already exist (e.g. on resize)
+	position_corner_buttons()
 
 func _notification(what):
 	if what == NOTIFICATION_RESIZED and is_node_ready():
@@ -206,6 +268,7 @@ func _on_play_pressed():
 	settings_button.disabled = true
 	exit_button.disabled = true
 	collection_button.disabled = true
+	shop_button.disabled = true
 	fade_out_and_go_to_mode_selection()
 
 func fade_out_and_go_to_mode_selection():
@@ -263,6 +326,26 @@ func _on_collection_pressed():
 	tween.tween_property(fade_overlay, "color:a", 1.0, fade_duration)
 	await tween.finished
 	get_tree().change_scene_to_file("res://scenes/CollectionMenu.tscn")
+
+func _on_shop_pressed():
+	if is_transitioning:
+		return
+	is_transitioning = true
+	get_tree().change_scene_to_file("res://scenes/shop_screen.tscn")
+
+func _on_wishlist_pressed():
+	# Fill WISHLIST_URL in once the Steam page exists.
+	if WISHLIST_URL != "":
+		OS.shell_open(WISHLIST_URL)
+	else:
+		print("Wishlist URL not set yet - see WISHLIST_URL in main_menu.gd")
+
+func _on_discord_pressed():
+	OS.shell_open(DISCORD_URL)
+
+func _on_credits_pressed():
+	# Placeholder until the credits screen exists.
+	print("Credits screen not built yet")
 
 func _on_exit_pressed():
 	if is_transitioning:

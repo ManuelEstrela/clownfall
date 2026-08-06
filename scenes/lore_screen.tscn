@@ -1,0 +1,8 @@
+[gd_scene load_steps=2 format=3 uid="uid://bc8vrqk2gwsae"]
+
+[ext_resource type="Script" uid="uid://0rlxyg2e0di3" path="res://scripts/lore_screen.gd" id="1_lore"]
+
+[node name="LoreScreen" type="Control"]
+layout_mode = 3
+anchors_preset = 0
+script = ExtResource("1_lore")

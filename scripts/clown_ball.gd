@@ -19,22 +19,56 @@ const COLLISION_VELOCITY_THRESHOLD: float = 150.0
 # begin touching. That makes it unreliable as the sole merge trigger, because:
 #   1. If the pair touches while either is still `just_spawned`, we reject the
 #      signal — and it never fires again, since they're already in contact.
-#      The two clowns then sit there touching forever, never merging.
 #   2. body_entered isn't guaranteed to fire on BOTH bodies, so an
 #      instance-ID tiebreak can silently drop the merge entirely.
 #   3. With contact reporting capped, a clown already touching several things
 #      in a dense pile may never report the new contact at all.
 #
 # So we keep body_entered as the fast path, but also poll for touching
-# same-type neighbours a few times a second. Anything the signal missed gets
-# caught here, which makes it structurally impossible for a valid pair to
-# sit unmerged.
-const MERGE_SCAN_INTERVAL: float = 0.1
+# same-type neighbours every physics frame. Anything the signal missed gets
+# caught here.
+
+# How often the safety-net scan runs. 0.0 = every physics frame.
+#
+# This used to be 0.1s, which was the main cause of the "I dropped a Tessa
+# right on another Tessa and they just bounced" bug. A dropped clown hits at
+# speed, and a bounce can start and finish inside a single 100ms window — so
+# the scan looked before contact and again after separation, and never saw
+# the two touching at all. At 60fps a clown moving 600px/s covers 60px in
+# that window, which is nearly twice a Tessa's whole diameter.
+const MERGE_SCAN_INTERVAL: float = 0.0
+
 # Extra slack (px) on the "are they touching?" distance test. Physics lets
 # bodies overlap slightly, and resting contact can leave a hairline gap, so a
 # strict radius sum would miss real contacts. Positive = more forgiving.
-const MERGE_CONTACT_TOLERANCE: float = 2.0
+const MERGE_CONTACT_TOLERANCE: float = 3.0
+
+# How long the spawn lockout lasts before a clown may merge.
+#
+# This was 0.15s, and it was the OTHER half of the bounce bug. Drop a Tessa
+# onto a Tessa: they touch within a few frames, body_entered fires, and the
+# handler rejects it because the dropped clown is still inside its lockout.
+# body_entered never fires again for a pair already in contact — so by the
+# time the clown became eligible, the bounce had already pushed them apart
+# and the merge was gone for good.
+#
+# The lockout only exists to stop a freshly *merged* clown from resolving
+# before physics has settled, and 0.05s is plenty for that. The
+# is_merging / can_merge guards are what actually prevent double-merges.
+const SPAWN_MERGE_LOCKOUT: float = 0.05
+
+# When a contact is rejected because of the spawn lockout, we remember the
+# partner instead of throwing the contact away. Once both are eligible, the
+# pair merges if they're still nearby — which catches the bounce case even
+# after they've drifted apart a little.
+const PENDING_CONTACT_MEMORY_MS: int = 400
+# How far apart a remembered pair may be and still merge, as a multiple of
+# their combined radii. 1.0 = must still be touching. Higher is more
+# forgiving but merges from further away.
+const PENDING_CONTACT_GRACE: float = 1.7
+
 var merge_scan_timer: float = 0.0
+var pending_contacts: Dictionary = {}
 
 # Effective collision radius, cached at setup() so the scan doesn't have to
 # dig into the shape every frame.
@@ -108,7 +142,7 @@ func _ready():
 	# merge never fires body_entered at all.
 	max_contacts_reported = 12
 	
-	await get_tree().create_timer(0.15).timeout
+	await get_tree().create_timer(SPAWN_MERGE_LOCKOUT).timeout
 	just_spawned = false
 
 func _process(delta):
@@ -116,9 +150,12 @@ func _process(delta):
 		collision_cooldown -= delta
 
 func _physics_process(delta):
-	# Safety net: catch any same-type neighbour we're already touching that
-	# body_entered missed (see the MERGE SAFETY NET notes above).
 	if is_merging or not can_merge or just_spawned:
+		return
+	
+	# Contacts we had to turn away during the spawn lockout get first refusal,
+	# since they represent a merge the player actually aimed for.
+	if _resolve_pending_contacts():
 		return
 	
 	merge_scan_timer -= delta
@@ -127,6 +164,54 @@ func _physics_process(delta):
 	merge_scan_timer = MERGE_SCAN_INTERVAL
 	
 	_scan_for_missed_merge()
+
+# Remember a same-type contact we couldn't act on yet. Recorded on BOTH
+# bodies, because body_entered may only fire on one of them.
+func _remember_pending(other: ClownBall):
+	var now = Time.get_ticks_msec()
+	pending_contacts[other.get_instance_id()] = now
+	other.pending_contacts[get_instance_id()] = now
+
+# Returns true if a merge was started.
+func _resolve_pending_contacts() -> bool:
+	if pending_contacts.is_empty():
+		return false
+	if clown_type >= CLOWNS.size() - 1:
+		pending_contacts.clear()
+		return false
+	
+	var now = Time.get_ticks_msec()
+	# .keys() returns a copy, so erasing while iterating is safe here.
+	for id in pending_contacts.keys():
+		if now - pending_contacts[id] > PENDING_CONTACT_MEMORY_MS:
+			pending_contacts.erase(id)
+			continue
+		
+		var other = instance_from_id(id)
+		if other == null or not is_instance_valid(other) or not (other is ClownBall):
+			pending_contacts.erase(id)
+			continue
+		if other.clown_type != clown_type:
+			pending_contacts.erase(id)
+			continue
+		if other.is_merging or not other.can_merge or other.just_spawned:
+			continue
+		if other.freeze or freeze:
+			continue
+		
+		var grace = (merge_radius + other.merge_radius) * PENDING_CONTACT_GRACE
+		if global_position.distance_to(other.global_position) > grace:
+			continue
+		
+		pending_contacts.erase(id)
+		other.pending_contacts.erase(get_instance_id())
+		
+		if get_instance_id() < other.get_instance_id():
+			attempt_merge(other)
+		else:
+			other.attempt_merge(self)
+		return true
+	return false
 
 # Looks for a same-type clown we are physically overlapping/touching but never
 # merged with. Only the lower instance ID actually initiates, so a pair can't
@@ -142,6 +227,11 @@ func _scan_for_missed_merge():
 	if not parent:
 		return
 	
+	# How far either body can travel in one physics step. Without this, a
+	# fast pair can pass from "not yet touching" to "already bouncing apart"
+	# between two consecutive frames and never register as in contact.
+	var step = get_physics_process_delta_time()
+	
 	for other in parent.get_children():
 		if other == self:
 			continue
@@ -155,7 +245,9 @@ func _scan_for_missed_merge():
 			continue
 		
 		# Are the two collision circles actually touching?
-		var contact_distance = merge_radius + other.merge_radius + MERGE_CONTACT_TOLERANCE
+		var closing_speed = (linear_velocity - other.linear_velocity).length()
+		var contact_distance = merge_radius + other.merge_radius \
+			+ MERGE_CONTACT_TOLERANCE + closing_speed * step
 		if global_position.distance_to(other.global_position) > contact_distance:
 			continue
 		
@@ -168,29 +260,27 @@ func _scan_for_missed_merge():
 
 func _on_body_entered(body):
 	if body is ClownBall:
-		# NOTE: we deliberately do NOT bail out on just_spawned here anymore.
-		# Rejecting the signal used to permanently lose the merge, because
-		# body_entered never fires again for a pair that's already in contact.
-		# The just_spawned check now lives in attempt_merge's guard chain and
-		# the safety-net scan will pick the pair up once the window expires.
 		if is_merging or not can_merge:
 			return
 		if not body.can_merge or body.is_merging:
 			return
-		if just_spawned or body.just_spawned:
-			# Not eligible yet — but do NOT drop it. The _physics_process scan
-			# will catch this pair as soon as the spawn window closes.
+		if body.clown_type != clown_type or clown_type >= CLOWNS.size() - 1:
+			# Different clown type, no merge — play collision sound
+			_try_play_collision_sound()
 			return
-		if body.clown_type == clown_type and clown_type < CLOWNS.size() - 1:
-			# Tiebreak so only one of the pair initiates. If the other body's
-			# signal is the only one that fired, the safety-net scan covers it.
-			if get_instance_id() < body.get_instance_id():
-				attempt_merge(body)
-				return  # Merge happening — skip collision sound entirely
-			else:
-				return  # Partner will initiate (or the scan will)
-		# Different clown type, no merge — play collision sound
-		_try_play_collision_sound()
+		
+		if just_spawned or body.just_spawned:
+			# Not eligible yet. body_entered will NEVER fire again for this
+			# pair, so remembering it here is what stops an intentional
+			# drop-on-match from being lost when the two bounce apart.
+			_remember_pending(body)
+			return
+		
+		# Tiebreak so only one of the pair initiates. If the other body's
+		# signal is the only one that fired, the safety-net scan covers it.
+		if get_instance_id() < body.get_instance_id():
+			attempt_merge(body)
+		return  # Merge happening (or partner will initiate) — no collision sound
 	else:
 		# Wall or floor (StaticBody2D) — play collision sound
 		_try_play_collision_sound()
@@ -225,21 +315,25 @@ func _try_play_collision_sound():
 		collision_cooldown = COLLISION_COOLDOWN_DURATION
 
 func attempt_merge(other: ClownBall):
-	# Re-check under the wire. Both body_entered and the safety-net scan can
-	# route here, and two calls could land in the same frame, so this guard is
-	# what actually prevents a double-merge (which would spawn two clowns from
-	# one pair, or free an already-freed node).
+	# Re-check under the wire. body_entered, the safety-net scan and the
+	# pending-contact resolver can all route here, and two calls could land in
+	# the same frame, so this guard is what actually prevents a double-merge
+	# (which would spawn two clowns from one pair, or free an already-freed
+	# node).
+	if not is_instance_valid(other):
+		return
 	if is_merging or other.is_merging:
 		return
 	if not can_merge or not other.can_merge:
-		return
-	if not is_instance_valid(other):
 		return
 	
 	is_merging = true
 	other.is_merging = true
 	can_merge = false
 	other.can_merge = false
+	
+	pending_contacts.clear()
+	other.pending_contacts.clear()
 	
 	var merge_pos = (global_position + other.global_position) / 2.0
 	

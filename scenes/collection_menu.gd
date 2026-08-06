@@ -161,7 +161,18 @@ func _ready():
 func _input(event):
 	if _navigating_away:
 		return
-	if event.is_action_pressed("ui_cancel"):
+	# project.godot binds Escape to "ui-cancel" — with a HYPHEN. Godot's
+	# built-in "ui_cancel" (underscore) is a different action and isn't
+	# what the key is mapped to, so this branch never fired before.
+	var back := false
+	if InputMap.has_action("ui-cancel") and event.is_action_pressed("ui-cancel"):
+		back = true
+	elif InputMap.has_action("ui_cancel") and event.is_action_pressed("ui_cancel"):
+		back = true
+	elif event is InputEventKey and event.pressed and not event.echo \
+		and event.keycode == KEY_ESCAPE:
+		back = true
+	if back:
 		get_viewport().set_input_as_handled()
 		_on_back_pressed()
 
@@ -640,8 +651,17 @@ func setup_total_merged_indicator():
 #  CARD CLICK — lore placeholder (fleshed out later)
 # ══════════════════════════════════════════════════════════════
 func _on_card_clicked(clown_index: int):
-	print("Clicked on: ", CLOWN_NAMES[clown_index], " (lore screen coming later)")
-	# TODO: open lore panel/popup here
+	if _navigating_away:
+		return
+	_navigating_away = true
+	_momentum_active = false
+	_dragging = false
+	if click_sound:
+		click_sound.play()
+	# A static var carries the selection across the scene change, so no
+	# autoload is needed just to pass one integer.
+	LoreScreen.requested_clown_index = clown_index
+	get_tree().change_scene_to_file("res://scenes/lore_screen.tscn")
 
 func _on_back_pressed():
 	if _navigating_away:
