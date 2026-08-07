@@ -96,6 +96,41 @@ var jail_meter_height: float = 28.0
 var jail_meter_gap: float = 14.0
 var jail_slots_per_row: int = 3
 
+# ── HEAT BAR ART ──────────────────────────────────────────────
+# Reuses the collection screen's progress bar. The asset is 258x66 and is
+# NOT a hollow frame — its interior is solid blue — so a fill drawn behind
+# it would be invisible. The fill goes on top instead, inset into the
+# interior, with a dark track underneath so "empty" reads as empty.
+const HEAT_BAR_ASSET := "res://assets/images/collection/progress_bar.png"
+const HEAT_BAR_ASSET_SIZE := Vector2(258.0, 66.0)
+# Measured off the PNG: the fillable interior, as fractions of the asset.
+# Outside this sits the navy border and the light rim.
+const HEAT_BAR_INNER_LEFT := 24.0 / 258.0
+const HEAT_BAR_INNER_RIGHT := 232.0 / 258.0
+const HEAT_BAR_INNER_TOP := 24.0 / 66.0
+const HEAT_BAR_INNER_BOTTOM := 42.0 / 66.0
+# Roughly 44% of the asset's height is transparent padding, so the bar you
+# actually SEE is centred at this fraction, not at 0.5. Used to line the
+# visible bar up with where the old flat meter sat.
+const HEAT_BAR_VISIBLE_CENTER := 31.5 / 66.0
+
+# ── JAIL MERGING ──────────────────────────────────────────────
+# Two identical clowns in the same jail column merge into the next tier,
+# landing in the bottom slot and freeing the top one.
+var jail_merge_enabled: bool = true
+var jail_merge_awards_score: bool = true
+var jail_merge_counts_for_collection: bool = true
+# A clown produced BY a jail merge is handcuffed and can never merge again.
+# Without this the jail is effectively unlimited: every merge frees a slot,
+# so the six cells could be recycled forever. Handcuffing caps it at one
+# merge per column — three per run — so a merge is a real trade (a free slot
+# now, that column dead afterwards) instead of an infinite supply.
+var jail_handcuff_merged: bool = true
+# Drop a file here and it replaces the drawn placeholder automatically.
+const HANDCUFF_ASSET := "res://assets/images/handcuffs.png"
+# Size of the handcuff mark relative to a jail cell.
+var handcuff_size_fraction: float = 0.55
+
 # ====== DROP GUIDE LINE (classic mode only) ======
 # Dotted vertical line under the van showing where the clown will land.
 # The dashes crawl downward so the line always has a little life in it.
@@ -150,7 +185,7 @@ var current_clown_type: int = 0
 var next_clown_type: int = 0
 
 var debug_hitboxes: bool = false
-var test_mode: bool = true
+var test_mode: bool = false
 var test_clown_index: int = 0
 
 # Preview clown
@@ -184,7 +219,11 @@ var collision_sound_large: AudioStreamPlayer = null
 var jail_enabled: bool = false
 var police_heat: int = 0
 var arrests_banked: int = 0
-var arrested_types: Array = []
+# One entry per jail slot, null when empty. Index order is bottom row
+# left-to-right, then top row — so slot 0 sits directly below slot 3.
+# A plain append-only list can't express this: merging frees a slot in the
+# middle, and the next arrest has to be able to refill that gap.
+var jail_slots: Array = []
 var arrest_mode: bool = false
 var hovered_clown = null
 var frozen_for_arrest: Array = []
@@ -192,7 +231,10 @@ var frozen_for_arrest: Array = []
 # Police Jail nodes
 var jail_root: Node2D = null
 var jail_meter_fill: ColorRect = null
-var jail_meter_bg: Panel = null
+# Plain Control, not a Panel: it's now just a positioned container holding
+# the bar artwork, the track and the fill. It stopped needing a StyleBox of
+# its own the moment the drawn meter was replaced with the asset.
+var jail_meter_bg: Control = null
 var jail_meter_label: Label = null
 var jail_frame: Panel = null
 var jail_bars_root: Node2D = null
@@ -577,26 +619,58 @@ func setup_police_jail():
 
 	var half = Vector2(jail_width / 2.0, jail_height / 2.0)
 
-	# ── Heat meter background ──
-	jail_meter_bg = Panel.new()
-	jail_meter_bg.size = Vector2(jail_width, jail_meter_height)
-	jail_meter_bg.position = Vector2(-half.x, -half.y - jail_meter_gap - jail_meter_height)
+	# ── Heat meter ──
+	# Drawn at the asset's true 258:66 ratio, never squashed. Because the
+	# PNG carries transparent padding, the bar only LOOKS about 43px tall at
+	# this width — it's positioned by its visible centre so it lands where
+	# the old flat meter sat rather than where its bounding box would.
+	var bar_scale = jail_width / HEAT_BAR_ASSET_SIZE.x
+	var bar_size = HEAT_BAR_ASSET_SIZE * bar_scale
+	var old_meter_center_y = -half.y - jail_meter_gap - jail_meter_height / 2.0
+	var bar_top = old_meter_center_y - bar_size.y * HEAT_BAR_VISIBLE_CENTER
+
+	jail_meter_bg = Control.new()
+	jail_meter_bg.size = bar_size
+	jail_meter_bg.position = Vector2(-half.x, bar_top)
 	jail_meter_bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var meter_style = StyleBoxFlat.new()
-	meter_style.bg_color = Color(0.08, 0.07, 0.10, 0.9)
-	meter_style.border_color = accent.darkened(0.4)
-	meter_style.set_border_width_all(3)
-	meter_style.set_corner_radius_all(int(jail_meter_height / 2.0))
-	jail_meter_bg.add_theme_stylebox_override("panel", meter_style)
 	jail_root.add_child(jail_meter_bg)
 
-	# ── Heat meter fill ──
+	# Interior region of the asset, in local pixels.
+	var inner_x = bar_size.x * HEAT_BAR_INNER_LEFT
+	var inner_w = bar_size.x * (HEAT_BAR_INNER_RIGHT - HEAT_BAR_INNER_LEFT)
+	var inner_y = bar_size.y * HEAT_BAR_INNER_TOP
+	var inner_h = bar_size.y * (HEAT_BAR_INNER_BOTTOM - HEAT_BAR_INNER_TOP)
+
+	# The artwork goes down FIRST, with the track and fill layered over its
+	# interior. The other way round doesn't work: the asset's interior is
+	# opaque blue, so drawing it last would simply hide the fill. Painting
+	# over the interior leaves the border and rim showing as a frame.
+	var bar_art = TextureRect.new()
+	bar_art.texture = load(HEAT_BAR_ASSET)
+	bar_art.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	bar_art.stretch_mode = TextureRect.STRETCH_SCALE
+	bar_art.size = bar_size
+	bar_art.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	jail_meter_bg.add_child(bar_art)
+
+	# Dark track next. Without it an empty meter would show the asset's own
+	# blue interior and read as already full.
+	var track = ColorRect.new()
+	track.color = Color(0.02, 0.05, 0.13, 1.0)
+	track.position = Vector2(inner_x, inner_y)
+	track.size = Vector2(inner_w, inner_h)
+	track.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	jail_meter_bg.add_child(track)
+
+	# ── Heat meter fill (colour-shifting, as before) ──
 	jail_meter_fill = ColorRect.new()
 	jail_meter_fill.color = Color(0.35, 0.62, 0.95)
-	jail_meter_fill.position = Vector2(5, 5)
-	jail_meter_fill.size = Vector2(0, jail_meter_height - 10)
+	jail_meter_fill.position = Vector2(inner_x, inner_y)
+	jail_meter_fill.size = Vector2(0, inner_h)
 	jail_meter_fill.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	jail_meter_bg.add_child(jail_meter_fill)
+	# Stored so update_jail_ui knows how wide "full" is without recomputing.
+	jail_meter_fill.set_meta("full_width", inner_w)
 
 	# ── Meter label (this is the only status text — it doubles as the
 	#    prompt once an arrest is banked) ──
@@ -609,8 +683,8 @@ func setup_police_jail():
 	jail_meter_label.add_theme_constant_override("outline_size", 4)
 	jail_meter_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	jail_meter_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	jail_meter_label.size = Vector2(jail_width, jail_meter_height)
-	jail_meter_label.position = Vector2.ZERO
+	jail_meter_label.size = Vector2(bar_size.x, inner_h + 6)
+	jail_meter_label.position = Vector2(0, inner_y - 3)
 	jail_meter_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	jail_meter_bg.add_child(jail_meter_label)
 
@@ -660,6 +734,9 @@ func setup_police_jail():
 		rail.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		jail_bars_root.add_child(rail)
 
+	jail_slots.clear()
+	jail_slots.resize(jail_capacity)
+
 	update_jail_ui()
 
 # Matches the jail to whichever UI theme is active.
@@ -694,7 +771,23 @@ func add_police_heat():
 	update_jail_ui()
 
 func is_jail_full() -> bool:
-	return arrested_types.size() >= jail_capacity
+	return jail_occupied_count() >= jail_capacity
+
+func jail_occupied_count() -> int:
+	var count := 0
+	for slot in jail_slots:
+		if slot != null:
+			count += 1
+	return count
+
+# Lowest free slot. Bottom row fills left to right, then the top row — and
+# because merging empties a slot mid-row, this deliberately scans for the
+# first gap rather than appending to the end.
+func first_free_jail_slot() -> int:
+	for i in range(jail_slots.size()):
+		if jail_slots[i] == null:
+			return i
+	return -1
 
 func can_arrest() -> bool:
 	return jail_enabled and not game_over and arrests_banked > 0 and not is_jail_full()
@@ -709,7 +802,7 @@ func update_jail_ui():
 		return
 
 	var ratio = heat_ratio()
-	var full_width = jail_width - 10.0
+	var full_width = jail_meter_fill.get_meta("full_width", jail_width - 10.0)
 	var target_width = full_width * ratio
 
 	var tween = create_tween()
@@ -721,7 +814,7 @@ func update_jail_ui():
 
 	if jail_meter_label and not arrest_mode:
 		if is_jail_full():
-			jail_meter_label.text = "JAIL FULL  %d/%d" % [arrested_types.size(), jail_capacity]
+			jail_meter_label.text = "JAIL FULL  %d/%d" % [jail_occupied_count(), jail_capacity]
 		elif arrests_banked > 0:
 			jail_meter_label.text = "PRESS CTRL TO ARREST"
 		else:
@@ -878,7 +971,8 @@ func confirm_arrest():
 	remove_clown(target)
 
 	arrests_banked -= 1
-	arrested_types.append(clown_type)
+
+	var slot = first_free_jail_slot()
 
 	var settings = get_node_or_null("/root/SettingsManager")
 	if settings and settings.has_method("add_clown_arrest"):
@@ -886,7 +980,13 @@ func confirm_arrest():
 
 	exit_arrest_mode()
 
-	send_to_jail_visual(texture, from_pos, arrested_types.size() - 1, clown_type)
+	if slot == -1:
+		# Shouldn't happen — can_arrest() blocks a full jail — but bail
+		# rather than dropping a sprite at an undefined position.
+		update_jail_ui()
+		return
+
+	send_to_jail_visual(texture, from_pos, slot, clown_type)
 	clown_arrested.emit(clown_type)
 
 	if is_jail_full():
@@ -957,6 +1057,8 @@ func send_to_jail_visual(texture: Texture2D, from_pos: Vector2, index: int, clow
 
 	var target_local = jail_cell_position(index)
 
+	jail_slots[index] = {"type": clown_type, "sprite": sprite, "handcuffed": false}
+
 	var tween = create_tween()
 	tween.set_parallel(true)
 	tween.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_IN_OUT)
@@ -965,7 +1067,161 @@ func send_to_jail_visual(texture: Texture2D, from_pos: Vector2, index: int, clow
 	tween.tween_property(sprite, "rotation", randf_range(-0.2, 0.2), 0.5)
 
 	print("🚔 ", ClownBallScript.CLOWNS[clown_type].name, " sent to jail (",
-		arrested_types.size(), "/", jail_capacity, ")")
+		jail_occupied_count(), "/", jail_capacity, ")")
+
+	# Wait for the prisoner to land before checking the column, so the merge
+	# reads as a reaction to it arriving rather than happening mid-flight.
+	tween.chain().tween_callback(func(): check_jail_merge(index))
+
+# Two identical clowns stacked in the same column merge into the next tier.
+#
+# Only ever checks a column (bottom slot vs the one directly above it), which
+# is why no cascade is possible: with two rows, a merge leaves the column
+# holding exactly one clown. If you ever add a third row this needs to loop.
+func check_jail_merge(placed_index: int):
+	if not jail_merge_enabled or game_over:
+		return
+	if placed_index < 0 or placed_index >= jail_slots.size():
+		return
+
+	var column = placed_index % jail_slots_per_row
+	var bottom = column
+	var top = column + jail_slots_per_row
+	if top >= jail_slots.size():
+		return
+
+	var bottom_slot = jail_slots[bottom]
+	var top_slot = jail_slots[top]
+	if bottom_slot == null or top_slot == null:
+		return
+	if bottom_slot.type != top_slot.type:
+		return
+	# A handcuffed clown is out of the merge pool for good, and so is
+	# anything stacked on top of it.
+	if bottom_slot.get("handcuffed", false) or top_slot.get("handcuffed", false):
+		return
+	# Top-tier clown has nothing to become.
+	if bottom_slot.type >= ClownBallScript.CLOWNS.size() - 1:
+		return
+
+	var new_type = bottom_slot.type + 1
+	merge_jail_pair(bottom, top, new_type)
+
+func merge_jail_pair(bottom: int, top: int, new_type: int):
+	var bottom_sprite = jail_slots[bottom].sprite
+	var top_sprite = jail_slots[top].sprite
+
+	# Free both slots up front. The animation runs afterwards, and an arrest
+	# landing mid-animation must not be handed a slot that still looks taken.
+	jail_slots[bottom] = null
+	jail_slots[top] = null
+
+	var landing = jail_cell_position(bottom)
+
+	# Slide the upper one down onto the lower one, then swap both for the
+	# merged clown — same shape as a container merge, just on a grid.
+	var tween = create_tween()
+	tween.set_parallel(true)
+	tween.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	if is_instance_valid(top_sprite):
+		tween.tween_property(top_sprite, "position", landing, 0.22)
+	if is_instance_valid(bottom_sprite):
+		tween.tween_property(bottom_sprite, "modulate:a", 0.0, 0.22)
+	await tween.finished
+
+	if is_instance_valid(top_sprite):
+		top_sprite.queue_free()
+	if is_instance_valid(bottom_sprite):
+		bottom_sprite.queue_free()
+
+	var texture = load(ClownBallScript.CLOWNS[new_type].image)
+	var merged = Sprite2D.new()
+	merged.texture = texture
+	merged.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
+	jail_prisoners.add_child(merged)
+
+	var end_scale = jail_cell_size() / float(texture.get_width())
+	merged.position = landing
+	merged.scale = Vector2.ONE * end_scale * 0.4
+	merged.rotation = randf_range(-0.2, 0.2)
+
+	jail_slots[bottom] = {
+		"type": new_type,
+		"sprite": merged,
+		"handcuffed": jail_handcuff_merged,
+	}
+
+	if jail_handcuff_merged:
+		add_handcuff_mark(merged, end_scale)
+
+	var pop = create_tween()
+	pop.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	pop.tween_property(merged, "scale", Vector2.ONE * end_scale, 0.28)
+
+	if new_type < pop_sounds.size():
+		pop_sounds[new_type].play()
+
+	if jail_merge_awards_score:
+		score += ClownBallScript.CLOWNS[new_type].score
+		score_changed.emit(score)
+		if score_label:
+			score_label.text = str(score)
+
+	var settings = get_node_or_null("/root/SettingsManager")
+	if settings and jail_merge_counts_for_collection:
+		settings.update_highest_tier(new_type)
+		settings.add_clown_merge(new_type)
+
+	print("🚔 Jail merge -> ", ClownBallScript.CLOWNS[new_type].name)
+
+	update_jail_ui()
+
+# Stamps the handcuff marker over a jailed clown.
+#
+# The marker is a CHILD of the sprite, with its scale inverted against the
+# sprite's own. That keeps it authored in screen pixels regardless of how
+# far the clown's texture had to be scaled down to fit its cell, while
+# still riding along with the pop tween and getting freed automatically
+# when the sprite does.
+func add_handcuff_mark(sprite: Sprite2D, sprite_scale: float):
+	if sprite == null or sprite_scale <= 0.0:
+		return
+
+	var mark_size = jail_cell_size() * handcuff_size_fraction
+
+	if ResourceLoader.exists(HANDCUFF_ASSET):
+		var texture = load(HANDCUFF_ASSET)
+		var icon = Sprite2D.new()
+		icon.texture = texture
+		icon.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
+		icon.scale = Vector2.ONE * (mark_size / float(texture.get_width())) / sprite_scale
+		sprite.add_child(icon)
+		return
+
+	var mark = HandcuffMark.new()
+	mark.mark_size = mark_size
+	mark.scale = Vector2.ONE / sprite_scale
+	sprite.add_child(mark)
+
+# Placeholder handcuffs: two open rings and a short chain, drawn as outlines
+# so the clown's face still reads through them.
+class HandcuffMark extends Node2D:
+	var mark_size: float = 26.0
+
+	func _draw():
+		var metal = Color(0.88, 0.90, 0.96)
+		var dark = Color(0.10, 0.11, 0.15)
+		var ring = mark_size * 0.30
+		var offset = mark_size * 0.36
+		var thickness = mark_size * 0.11
+
+		draw_line(Vector2(-offset, 0), Vector2(offset, 0), dark, thickness * 1.7)
+		draw_line(Vector2(-offset, 0), Vector2(offset, 0), metal, thickness)
+
+		for side in [-1.0, 1.0]:
+			var centre = Vector2(side * offset, 0)
+			draw_arc(centre, ring, 0, TAU, 28, dark, thickness * 1.7, true)
+			draw_arc(centre, ring, 0, TAU, 28, metal, thickness, true)
 
 # ══════════════════════════════════════════════════════════════════════
 #  SPRITE CLIPPING

@@ -98,7 +98,7 @@ const FALLBACK_CARD_ASSET := "res://assets/images/collection/hazel_card.png"
 #  you can rewrite every entry freely without touching the code.
 # ══════════════════════════════════════════════════════════════
 const LORE = {
-	0: "Lore for Tessa goes here.\n\nWrite a few paragraphs about who she is, where she came from, and what she wants. Blank lines between paragraphs are preserved.",
+	0: "Tessa Lamb, also known as BooBoo the clown, is an important member of the Clowncil. She is most well-known for being the former Game Warden of the San Andreas State Park Rangers, as well as the owner of Right of Way Driving School before it closed.\n\nAfter retiring from the Police Department, Tessa went to rehab due to her rampant alcoholism that she developed following the death of her adoptive father Sam Baas among other comrades and friends. After she completed her rehab, she then went on an adventure around the world, mostly with a focus on wildlife, and avoiding human contact as much as possible. She returned to Los Santos, and after a brief time with The Italians, joined her adoptive son Chatterbox as a clown.",
 	1: "Lore for Twinkles goes here.\n\nReplace this text with the real thing.",
 	2: "Lore for Reina goes here.\n\nReplace this text with the real thing.",
 	3: "Lore for Osvaldo goes here.\n\nReplace this text with the real thing.",
