@@ -12,7 +12,7 @@ var lights_out_duration: float = 8.0
 
 # Powerup durations
 var double_points_duration: float = 15.0
-var extra_life_duration: float = 30.0
+var extra_life_duration: float = 7.0
 
 # Current active effects
 var is_rushtime_active: bool = false
@@ -57,9 +57,29 @@ var powerup_used: Dictionary = {
 var powerup_cooldown_duration: float = 20.0
 
 # UI for powerups and events
-var powerup_container: HBoxContainer = null
-var event_label: Label = null
+# The keycaps sit where the leaderboard used to, mirroring how the Police
+# Jail took over that slot in classic mode.
+var keycap_root: Control = null
+var keycaps: Dictionary = {}          # powerup name -> Keycap
 var event_timer_label: Label = null
+# Keybinds are re-read every frame and compared, so changing one in the
+# settings menu updates the caps without needing a restart.
+var displayed_keys: Dictionary = {}
+
+# ── KEYCAP LAYOUT ─────────────────────────────────────────────
+# Pyramid: one on top, two below. Centred on where the leaderboard sat.
+const KEYCAP_CENTER_X := 215.0
+const KEYCAP_TOP_Y := 300.0
+const KEYCAP_SIZE := Vector2(112.0, 112.0)
+const KEYCAP_GAP := Vector2(18.0, 14.0)
+# Slot order: 1 = top, 2 = bottom-left, 3 = bottom-right.
+const POWERUP_SLOTS := [
+	{"name": "double_points", "label": "2X POINTS", "slot": 1},
+	{"name": "shuffle",       "label": "SHUFFLE",   "slot": 2},
+	{"name": "extra_life",    "label": "EXTRA LIFE","slot": 3},
+]
+# Drop a PNG at this path per powerup and it replaces the drawn icon.
+const POWERUP_ICON_DIR := "res://assets/images/powerups/"
 
 # ====== CHAOS SOUND EFFECTS ======
 var gravity_event_sound: AudioStreamPlayer = null
@@ -75,6 +95,10 @@ func _ready():
 	# Setup chaos sounds
 	setup_chaos_sounds()
 	
+	# The keycap panel takes the leaderboard's place, same as the jail does
+	# in classic mode.
+	hide_leaderboard()
+
 	# Setup chaotic UI
 	setup_chaotic_ui()
 	
@@ -113,55 +137,90 @@ func setup_chaos_sounds():
 	print("✅ Chaos sounds loaded!")
 
 func setup_chaotic_ui():
-	# [Rest of the UI setup code remains the same]
-	powerup_container = HBoxContainer.new()
-	powerup_container.z_index = 250
-	add_child(powerup_container)
-	powerup_container.position = Vector2(400, 50)
-	powerup_container.add_theme_constant_override("separation", 20)
-	
-	create_powerup_button("Q - 2X Points", "double_points")
-	create_powerup_button("W - Shuffle", "shuffle")
-	create_powerup_button("E - Extra Life", "extra_life")
-	
-	event_label = Label.new()
-	event_label.z_index = 250
-	add_child(event_label)
-	event_label.add_theme_font_size_override("font_size", 32)
-	event_label.add_theme_color_override("font_color", Color(1, 0.3, 0.3))
-	event_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 1))
-	event_label.add_theme_constant_override("outline_size", 4)
-	event_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	event_label.position = Vector2(640 - 200, 300)
-	event_label.size = Vector2(400, 50)
-	event_label.visible = false
-	
+	var settings = get_node_or_null("/root/SettingsManager")
+
+	keycap_root = Control.new()
+	keycap_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	keycap_root.z_index = 250
+	add_child(keycap_root)
+
+	# Pyramid positions, worked out from the centre so the whole cluster
+	# moves together if KEYCAP_CENTER_X changes.
+	var half = KEYCAP_SIZE / 2.0
+	var positions = [
+		Vector2(KEYCAP_CENTER_X - half.x, KEYCAP_TOP_Y),
+		Vector2(KEYCAP_CENTER_X - KEYCAP_SIZE.x - KEYCAP_GAP.x / 2.0,
+			KEYCAP_TOP_Y + KEYCAP_SIZE.y + KEYCAP_GAP.y),
+		Vector2(KEYCAP_CENTER_X + KEYCAP_GAP.x / 2.0,
+			KEYCAP_TOP_Y + KEYCAP_SIZE.y + KEYCAP_GAP.y),
+	]
+
+	for i in range(POWERUP_SLOTS.size()):
+		var info = POWERUP_SLOTS[i]
+		var cap = Keycap.new()
+		cap.size = KEYCAP_SIZE
+		cap.position = positions[i]
+		cap.powerup_name = info.name
+		cap.icon_texture = _load_powerup_icon(info.name)
+		cap.key_text = _key_name_for_slot(settings, info.slot)
+		cap.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		keycap_root.add_child(cap)
+		keycaps[info.name] = cap
+		displayed_keys[info.name] = _key_for_slot(settings, info.slot)
+
+	# Timer sits under the caps. Doubles as the event name while one runs,
+	# which is why the old centre-screen announcement is gone.
 	event_timer_label = Label.new()
 	event_timer_label.z_index = 250
 	add_child(event_timer_label)
-	event_timer_label.add_theme_font_size_override("font_size", 20)
-	event_timer_label.add_theme_color_override("font_color", Color(1, 1, 0))
-	event_timer_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 1))
-	event_timer_label.add_theme_constant_override("outline_size", 3)
+	var font = load("res://assets/fonts/Clownfall-Regular.ttf")
+	if font:
+		event_timer_label.add_theme_font_override("font", font)
+	event_timer_label.add_theme_font_size_override("font_size", 24)
+	event_timer_label.add_theme_color_override("font_color", Color(1, 1, 1))
+	event_timer_label.add_theme_color_override("font_outline_color", Color(0, 0, 0))
+	event_timer_label.add_theme_constant_override("outline_size", 5)
 	event_timer_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	event_timer_label.position = Vector2(640 - 150, 10)
-	event_timer_label.size = Vector2(300, 30)
-	event_timer_label.text = "Next Event: 10s"
+	event_timer_label.position = Vector2(KEYCAP_CENTER_X - 200,
+		KEYCAP_TOP_Y + KEYCAP_SIZE.y * 2.0 + KEYCAP_GAP.y + 22.0)
+	event_timer_label.size = Vector2(400, 30)
+	event_timer_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	event_timer_label.text = "NEXT EVENT IN: %ds" % int(event_interval)
 
-func create_powerup_button(label_text: String, powerup_name: String):
-	var button_bg = ColorRect.new()
-	button_bg.size = Vector2(150, 60)
-	button_bg.color = Color(0.2, 0.2, 0.3, 0.9)
-	powerup_container.add_child(button_bg)
-	
-	var label = Label.new()
-	button_bg.add_child(label)
-	label.text = label_text
-	label.add_theme_font_size_override("font_size", 16)
-	label.add_theme_color_override("font_color", Color(1, 1, 1))
-	label.position = Vector2(10, 20)
-	label.set_meta("powerup_name", powerup_name)
-	label.set_meta("button_bg", button_bg)
+func _load_powerup_icon(powerup_name: String) -> Texture2D:
+	var path = POWERUP_ICON_DIR + powerup_name + ".png"
+	if ResourceLoader.exists(path):
+		return load(path)
+	return null
+
+func _key_for_slot(settings, slot: int) -> int:
+	if settings == null:
+		return [KEY_Q, KEY_W, KEY_E][slot - 1]
+	match slot:
+		1: return settings.powerup_key_1
+		2: return settings.powerup_key_2
+		_: return settings.powerup_key_3
+
+func _key_name_for_slot(settings, slot: int) -> String:
+	var key = _key_for_slot(settings, slot)
+	if settings and settings.has_method("get_key_name"):
+		return settings.get_key_name(key)
+	return OS.get_keycode_string(key)
+
+# Keeps the caps in step with the settings menu. Cheap: three integer
+# comparisons, and it only touches a cap when a bind actually changed.
+func refresh_keycap_binds():
+	var settings = get_node_or_null("/root/SettingsManager")
+	if settings == null:
+		return
+	for info in POWERUP_SLOTS:
+		var current = _key_for_slot(settings, info.slot)
+		if displayed_keys.get(info.name, -1) != current:
+			displayed_keys[info.name] = current
+			var cap = keycaps.get(info.name)
+			if cap:
+				cap.key_text = _key_name_for_slot(settings, info.slot)
+				cap.queue_redraw()
 
 func setup_lights_out():
 	# [Lights out setup code remains the same...]
@@ -212,6 +271,9 @@ func _process(delta):
 	if game_over:
 		return
 	
+	refresh_keycap_binds()
+	refresh_keycap_states()
+
 	if event_counting:
 		event_timer += delta
 		if event_timer >= event_interval:
@@ -220,9 +282,13 @@ func _process(delta):
 			trigger_random_event()
 		else:
 			var time_left = event_interval - event_timer
-			event_timer_label.text = "Next Event: " + str(int(ceil(time_left))) + "s"
+			event_timer_label.text = "NEXT EVENT IN: %ds" % int(ceil(time_left))
+			event_timer_label.add_theme_color_override("font_color", Color(1, 1, 1))
 	else:
-		event_timer_label.text = "Event Active!"
+		# While an event runs the timer slot shows its name instead — this
+		# replaces the old centre-screen announcement.
+		event_timer_label.text = active_event_name()
+		event_timer_label.add_theme_color_override("font_color", Color(1, 0.35, 0.35))
 	
 	update_rushtime(delta)
 	update_zero_gravity(delta)
@@ -234,6 +300,29 @@ func _process(delta):
 		if powerup_cooldowns[powerup] > 0:
 			powerup_cooldowns[powerup] -= delta
 
+# Derived from the active flags rather than stored when the event fires, so
+# it can never disagree with what's actually running.
+func active_event_name() -> String:
+	if is_rushtime_active:
+		return "RUSHTIME!"
+	if is_zero_gravity_active:
+		return "ZERO GRAVITY!"
+	if is_lights_out_active:
+		return "LIGHTS OUT!"
+	return "EVENT ACTIVE!"
+
+func refresh_keycap_states():
+	for info in POWERUP_SLOTS:
+		var cap = keycaps.get(info.name)
+		if cap == null:
+			continue
+		var spent: bool = powerup_used.get(info.name, false)
+		var cooling: bool = powerup_cooldowns.get(info.name, 0.0) > 0.0
+		var now_available = not spent and not cooling
+		if cap.available != now_available:
+			cap.available = now_available
+			cap.queue_redraw()
+
 func _input(event):
 	super._input(event)
 	
@@ -241,13 +330,12 @@ func _input(event):
 		return
 	
 	if event is InputEventKey and event.pressed and not event.echo:
-		match event.keycode:
-			KEY_Q:
-				activate_powerup("double_points")
-			KEY_W:
-				activate_powerup("shuffle")
-			KEY_E:
-				activate_powerup("extra_life")
+		# Binds come from the settings menu now, not hardcoded QWE.
+		var settings = get_node_or_null("/root/SettingsManager")
+		for info in POWERUP_SLOTS:
+			if event.keycode == _key_for_slot(settings, info.slot):
+				activate_powerup(info.name)
+				return
 
 func trigger_random_event():
 	var events = ["rushtime", "zero_gravity", "lights_out"]
@@ -264,14 +352,18 @@ func trigger_random_event():
 		"lights_out":
 			start_lights_out()
 
+# The centre-screen announcement is gone — the event's name appears in the
+# timer slot under the keycaps for as long as it's actually running, which
+# is more useful than a banner that fades after two seconds. Kept as a
+# function so the existing call site doesn't need to change; a quick pulse
+# on the label draws the eye when an event starts.
 func show_event_notification(text: String):
-	event_label.text = text
-	event_label.visible = true
-	
+	print("Event: ", text)
+	if event_timer_label == null:
+		return
 	var tween = create_tween()
-	tween.tween_property(event_label, "modulate:a", 0.0, 2.0).set_delay(2.0)
-	tween.tween_callback(func(): event_label.visible = false)
-	tween.tween_property(event_label, "modulate:a", 1.0, 0.0)
+	tween.tween_property(event_timer_label, "scale", Vector2(1.25, 1.25), 0.12)
+	tween.tween_property(event_timer_label, "scale", Vector2.ONE, 0.22)
 
 # ========== EVENTS ==========
 
@@ -423,13 +515,16 @@ func activate_powerup(powerup_name: String):
 			start_extra_life()
 
 func darken_powerup_button(powerup_name: String):
-	for child in powerup_container.get_children():
-		if child is ColorRect:
-			var label = child.get_child(0)
-			if label and label.get_meta("powerup_name") == powerup_name:
-				child.color = Color(0.1, 0.1, 0.15, 0.5)
-				label.add_theme_color_override("font_color", Color(0.5, 0.5, 0.5))
-				print("Darkened powerup button: ", powerup_name)
+	var cap = keycaps.get(powerup_name)
+	if cap:
+		cap.available = false
+		cap.queue_redraw()
+		# Quick press-down so using a powerup registers even when your eyes
+		# are on the container.
+		var tween = create_tween()
+		tween.tween_property(cap, "position:y", cap.position.y + 5.0, 0.06)
+		tween.tween_property(cap, "position:y", cap.position.y, 0.12)
+		print("Powerup used: ", powerup_name)
 
 func start_double_points():
 	is_double_points_active = true
@@ -461,6 +556,9 @@ func do_shuffle():
 func start_extra_life():
 	is_extra_life_active = true
 	extra_life_timer = extra_life_duration
+	# Recolour the limit line so it's obvious the rule is suspended.
+	if danger_line:
+		danger_line.line_color = Color(0.35, 0.95, 0.45)
 	print("EXTRA LIFE ACTIVATED!")
 
 func update_extra_life(delta: float):
@@ -471,6 +569,8 @@ func update_extra_life(delta: float):
 	
 	if extra_life_timer <= 0:
 		is_extra_life_active = false
+		if danger_line:
+			danger_line.line_color = danger_line_color
 		print("EXTRA LIFE ENDED")
 
 func merge_clowns(clown1, clown2, merge_pos: Vector2, new_type: int):
@@ -565,8 +665,166 @@ func drop_clown():
 		can_drop = true
 		spawn_preview()
 
+# Extra Life no longer skips the check entirely. It used to return early,
+# which froze the danger timers — clowns could pile past the line and sit
+# there, then end the run the instant the powerup expired. Now the check
+# runs as normal and handle_danger_breach() below intercepts the result.
 func check_danger_zone(delta: float):
-	if is_extra_life_active:
-		return
-	
 	super.check_danger_zone(delta)
+
+# Called by GameManager when a clown has held above the limit long enough
+# to be fatal. While Extra Life is up, the clown bursts and the run carries
+# on; otherwise this falls through to the normal game over.
+func handle_danger_breach(clown) -> bool:
+	if not is_extra_life_active:
+		return false
+	pop_clown_at_limit(clown)
+	return true
+
+func pop_clown_at_limit(clown):
+	if not is_instance_valid(clown):
+		return
+
+	var burst = PopBurst.new()
+	burst.position = clown.global_position
+	burst.burst_radius = clown.merge_radius * 2.4
+	burst.burst_color = Color(1.0, 0.45, 0.35)
+	burst.z_index = 300
+	add_child(burst)
+
+	var tween = create_tween()
+	tween.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tween.tween_property(burst, "progress", 1.0, 0.35)
+	tween.tween_callback(burst.queue_free)
+
+	if clown.clown_type < pop_sounds.size():
+		pop_sounds[clown.clown_type].play()
+
+	# Reuses the jail's safe-removal path: it clears can_merge / is_merging
+	# before freeing, so a neighbour can't grab the dying clown as a merge
+	# partner in the frames before it actually leaves the tree.
+	remove_clown(clown)
+
+	print("💥 Extra Life burst: ", ClownBallScript.CLOWNS[clown.clown_type].name)
+
+# ══════════════════════════════════════════════════════════════════════
+#  KEYCAP
+#
+#  A drawn keyboard cap: powerup icon on the upper face, keybind on the
+#  lower strip. Placeholders only — drop a PNG at
+#  res://assets/images/powerups/<powerup_name>.png and it replaces the
+#  drawn icon with no code change.
+# ══════════════════════════════════════════════════════════════════════
+class Keycap extends Control:
+	var powerup_name: String = ""
+	var key_text: String = ""
+	var icon_texture: Texture2D = null
+	var available: bool = true
+
+	func _draw():
+		# Dimmed once spent or on cooldown, so state reads at a glance
+		# without needing a separate indicator.
+		var fade = 1.0 if available else 0.42
+		var body = Color(0.09, 0.09, 0.12, 0.96 * fade)
+		var face = Color(0.16, 0.16, 0.21, fade)
+		var edge = Color(0.75, 0.77, 0.85, fade)
+		var key_color = Color(0.95, 0.25, 0.25, fade) if available \
+			else Color(0.6, 0.6, 0.65, fade)
+
+		# Cap body with a lip along the bottom to suggest depth
+		var lip = size.y * 0.09
+		var body_box := StyleBoxFlat.new()
+		body_box.bg_color = body
+		body_box.set_corner_radius_all(int(size.x * 0.14))
+		draw_style_box(body_box, Rect2(Vector2.ZERO, size))
+
+		var face_box := StyleBoxFlat.new()
+		face_box.bg_color = face
+		face_box.set_corner_radius_all(int(size.x * 0.11))
+		draw_style_box(face_box, Rect2(
+			Vector2(size.x * 0.07, size.y * 0.06),
+			Vector2(size.x * 0.86, size.y * 0.86 - lip)
+		))
+
+		# Icon occupies the upper ~62% of the face
+		var icon_area = Rect2(
+			Vector2(size.x * 0.16, size.y * 0.12),
+			Vector2(size.x * 0.68, size.y * 0.50)
+		)
+		if icon_texture:
+			draw_texture_rect(icon_texture, icon_area, false, Color(1, 1, 1, fade))
+		else:
+			_draw_placeholder_icon(icon_area, edge, fade)
+
+		# Divider, then the keybind on the lower strip
+		var divider_y = size.y * 0.66
+		draw_line(Vector2(size.x * 0.18, divider_y),
+			Vector2(size.x * 0.82, divider_y), Color(1, 1, 1, 0.16 * fade), 2.0)
+
+		var font = ThemeDB.fallback_font
+		var font_size = int(size.y * 0.20)
+		var text = key_text.to_upper()
+		var text_w = font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT,
+			-1, font_size).x
+		draw_string(font,
+			Vector2((size.x - text_w) / 2.0, size.y * 0.88 - lip * 0.5),
+			text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, key_color)
+
+	func _draw_placeholder_icon(area: Rect2, tint: Color, fade: float):
+		var c = area.position + area.size / 2.0
+		var r = min(area.size.x, area.size.y) * 0.42
+
+		match powerup_name:
+			"double_points":
+				# Two stacked chevrons pointing up — "more"
+				for i in range(2):
+					var y = c.y - r * 0.5 + i * r * 0.62
+					draw_line(Vector2(c.x - r * 0.7, y + r * 0.3),
+						Vector2(c.x, y - r * 0.2), tint, r * 0.22)
+					draw_line(Vector2(c.x, y - r * 0.2),
+						Vector2(c.x + r * 0.7, y + r * 0.3), tint, r * 0.22)
+			"shuffle":
+				# Two crossing arrows
+				draw_line(c + Vector2(-r, -r * 0.5), c + Vector2(r, r * 0.5), tint, r * 0.20)
+				draw_line(c + Vector2(-r, r * 0.5), c + Vector2(r, -r * 0.5), tint, r * 0.20)
+				for dir in [-1.0, 1.0]:
+					var tip = c + Vector2(r, dir * r * 0.5)
+					draw_line(tip, tip + Vector2(-r * 0.34, dir * -r * 0.1), tint, r * 0.18)
+					draw_line(tip, tip + Vector2(-r * 0.28, dir * -r * 0.34), tint, r * 0.18)
+			_:
+				# Heart for extra life, built from two arcs and a point
+				var heart := PackedVector2Array()
+				var steps := 30
+				for i in range(steps + 1):
+					var t = TAU * float(i) / float(steps)
+					var x = 16.0 * pow(sin(t), 3)
+					var y = -(13.0 * cos(t) - 5.0 * cos(2 * t)
+						- 2.0 * cos(3 * t) - cos(4 * t))
+					heart.append(c + Vector2(x, y) * (r / 16.0))
+				draw_colored_polygon(heart, Color(0.95, 0.30, 0.36, fade))
+
+
+# Expanding ring left behind by a clown that burst on the limit line.
+# `progress` is what the tween drives; _process just keeps it redrawing.
+class PopBurst extends Node2D:
+	var progress: float = 0.0
+	var burst_radius: float = 60.0
+	var burst_color: Color = Color(1.0, 0.45, 0.35)
+
+	func _process(_delta):
+		queue_redraw()
+
+	func _draw():
+		var t = clampf(progress, 0.0, 1.0)
+		var radius = burst_radius * (0.35 + t * 0.9)
+		var alpha = 1.0 - t
+		draw_arc(Vector2.ZERO, radius, 0, TAU, 32,
+			Color(burst_color.r, burst_color.g, burst_color.b, alpha),
+			burst_radius * 0.16 * (1.0 - t * 0.6), true)
+		# A few shards flying outward sell it as a burst rather than a ripple.
+		for i in range(8):
+			var angle = TAU * float(i) / 8.0
+			var dir = Vector2(cos(angle), sin(angle))
+			draw_line(dir * radius * 0.7, dir * radius * 1.05,
+				Color(burst_color.r, burst_color.g, burst_color.b, alpha * 0.9),
+				burst_radius * 0.10)

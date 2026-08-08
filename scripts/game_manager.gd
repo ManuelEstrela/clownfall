@@ -243,13 +243,17 @@ var jail_dim_overlay: ColorRect = null
 
 # Drop guide
 var drop_guide = null
+# Cached so the per-physics-frame Drop Assist check isn't a node lookup.
+var settings_ref: Node = null
 
 # Danger line
 var danger_line = null
 var danger_limit_y: float = 0.0
 var danger_warning_timer: float = 0.0
 
-# True only in classic mode. Gates the features chaos mode shouldn't inherit.
+# True only in classic mode. Gates the Police Jail, which chaos doesn't have.
+# Clipping, the drop guide and the danger line now run in both modes, so
+# they are deliberately NOT behind this.
 var classic_features: bool = false
 
 # Sprite clipping
@@ -414,17 +418,32 @@ func _ready():
 	add_clown_cycle_decoration(viewport_size, container_scale)
 	spawn_preview()
 
+	settings_ref = get_node_or_null("/root/SettingsManager")
+
+	# These run in BOTH modes — chaotic_manager.gd extends this script, so
+	# building them here means chaos inherits them. The drop guide's
+	# visibility is decided per frame by the Drop Assist setting.
+	setup_drop_guide()
+	setup_clip_material()
+	setup_danger_line()
+	if debug_clip_bounds:
+		draw_debug_clip_bounds()
+
+	# Every clown gets the clip material as it enters the tree. Doing it
+	# here rather than at each spawn site matters because chaos mode
+	# OVERRIDES drop_clown() and merge_clowns() without calling super — any
+	# clown born in those overrides would otherwise never be clipped.
+	child_entered_tree.connect(func(child):
+		if child is ClownBall:
+			apply_clip_material(child)
+	)
+
 	# ── Classic-mode-only features ──
 	if _is_classic_mode():
 		classic_features = true
 		jail_enabled = true
 		hide_leaderboard()
 		setup_police_jail()
-		setup_drop_guide()
-		setup_clip_material()
-		setup_danger_line()
-		if debug_clip_bounds:
-			draw_debug_clip_bounds()
 
 func setup_audio():
 	click_sound = AudioStreamPlayer.new()
@@ -1420,6 +1439,11 @@ class DangerLine extends Node2D:
 #  DROP GUIDE LINE
 # ══════════════════════════════════════════════════════════════════════
 
+func drop_assist_enabled() -> bool:
+	if settings_ref == null or not is_instance_valid(settings_ref):
+		settings_ref = get_node_or_null("/root/SettingsManager")
+	return settings_ref != null and settings_ref.drop_assist_enabled
+
 func setup_drop_guide():
 	drop_guide = DropGuideLine.new()
 	drop_guide.dash_length = guide_dash_length
@@ -1440,6 +1464,12 @@ func _physics_process(_delta):
 
 func update_drop_guide():
 	if drop_guide == null:
+		return
+
+	# Checked live rather than cached at startup, so toggling Drop Assist in
+	# the settings menu takes effect without needing a fresh run.
+	if not drop_assist_enabled():
+		drop_guide.visible = false
 		return
 
 	if game_over or arrest_mode or preview_clown == null or not is_instance_valid(preview_clown):
@@ -1735,24 +1765,36 @@ func merge_clowns(clown1, clown2, merge_pos: Vector2, new_type: int):
 # Chaos mode keeps the original centre-based rule, since chaotic_manager.gd
 # calls super.check_danger_zone() and its balance is tuned around it.
 func check_danger_zone(delta: float):
-	var limit = danger_limit_y if classic_features else danger_y
 	for child in get_children():
 		if child is ClownBall and not child.freeze:
-			var height = child.global_position.y
-			if classic_features:
-				height -= child.merge_radius
-			if height < limit:
+			# Top edge against the drawn line, in both modes. Chaos shows
+			# the same red line now, so it has to obey the same rule —
+			# a visible line that lies about where the limit is would be
+			# worse than no line at all.
+			var height = child.global_position.y - child.merge_radius
+			if height < danger_limit_y:
 				if child.linear_velocity.length() < danger_settle_speed:
 					if not child.has_meta("danger_timer"):
 						child.set_meta("danger_timer", 0.0)
 					var timer = child.get_meta("danger_timer") + delta
 					child.set_meta("danger_timer", timer)
 					if timer > 1.0:
+						# Subclasses get first refusal on a breach. Chaos
+						# uses this for Extra Life: the clown pops and the
+						# run continues instead of ending.
+						if handle_danger_breach(child):
+							child.set_meta("danger_timer", 0.0)
+							continue
 						trigger_game_over()
 						return
 			else:
 				if child.has_meta("danger_timer"):
 					child.set_meta("danger_timer", 0.0)
+
+# Return true if the breach was dealt with and the run should continue.
+# Base game has no such escape, so this is always fatal in classic.
+func handle_danger_breach(_clown) -> bool:
+	return false
 
 func trigger_game_over():
 	if game_over:

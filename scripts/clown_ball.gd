@@ -79,18 +79,35 @@ var merge_radius: float = 0.0
 @onready var collision: CollisionShape2D = $Collision
 
 # Clown config with individual hitbox scales AND vertical offsets
+#
+# Sizes are the on-screen DIAMETER in pixels, and every one here is the
+# original value multiplied by CLOWN_SIZE_MULTIPLIER below. The relative
+# steps between clowns are untouched — Kirk is still 5.49x Tessa, exactly
+# as before — so the progression feels identical, just larger against the
+# container.
+#
+# hitbox_scale is deliberately UNCHANGED. It's a fraction of size, not a
+# pixel value (radius = size / 2 * hitbox_scale), so it already scales with
+# the clown automatically. Bumping it would make the hitboxes grow faster
+# than the art and break the fit you already tuned.
+#
+# hitbox_offset_y DID have to change — that one IS in pixels, so it was
+# scaled by the same multiplier to keep each hitbox sitting in the same
+# spot relative to the artwork.
+const CLOWN_SIZE_MULTIPLIER := 1.15
+
 const CLOWNS = [
-	{"name": "Tessa",    "size": 35,  "score": 1,  "hitbox_scale": 0.95, "hitbox_offset_y": 0,  "image": "res://assets/images/tessa.png"},
-	{"name": "Twinkles", "size": 42,  "score": 3,  "hitbox_scale": 0.94, "hitbox_offset_y": 0,  "image": "res://assets/images/twinkles.png"},
-	{"name": "Reina",    "size": 48,  "score": 6,  "hitbox_scale": 0.90, "hitbox_offset_y": -2, "image": "res://assets/images/reina.png"},
-	{"name": "Osvaldo",  "size": 58,  "score": 10, "hitbox_scale": 0.92, "hitbox_offset_y": 0,  "image": "res://assets/images/osvaldo.png"},
-	{"name": "Hazel",    "size": 72,  "score": 15, "hitbox_scale": 0.92, "hitbox_offset_y": 0,  "image": "res://assets/images/hazel.png"},
-	{"name": "Mumbles",  "size": 80,  "score": 21, "hitbox_scale": 0.90, "hitbox_offset_y": 4,  "image": "res://assets/images/mumbles.png"},
-	{"name": "Sneaky",   "size": 92,  "score": 28, "hitbox_scale": 0.90, "hitbox_offset_y": 2,  "image": "res://assets/images/sneaky.png"},
-	{"name": "Wendy",    "size": 100, "score": 36, "hitbox_scale": 0.94, "hitbox_offset_y": -1, "image": "res://assets/images/wendy.png"},
-	{"name": "Chatty",   "size": 130, "score": 45, "hitbox_scale": 0.82, "hitbox_offset_y": 5,  "image": "res://assets/images/chatty.png"},
-	{"name": "Cups",     "size": 150, "score": 55, "hitbox_scale": 0.92, "hitbox_offset_y": -1, "image": "res://assets/images/cups.png"},
-	{"name": "Kirk",     "size": 192, "score": 66, "hitbox_scale": 0.82, "hitbox_offset_y": 1,  "image": "res://assets/images/kirk.png"},
+	{"name": "Tessa",    "size": 40,  "score": 1,  "hitbox_scale": 0.95, "hitbox_offset_y": 0,    "image": "res://assets/images/tessa.png"},
+	{"name": "Twinkles", "size": 48,  "score": 3,  "hitbox_scale": 0.94, "hitbox_offset_y": 0,    "image": "res://assets/images/twinkles.png"},
+	{"name": "Reina",    "size": 55,  "score": 6,  "hitbox_scale": 0.90, "hitbox_offset_y": -2.3, "image": "res://assets/images/reina.png"},
+	{"name": "Osvaldo",  "size": 67,  "score": 10, "hitbox_scale": 0.92, "hitbox_offset_y": 0,    "image": "res://assets/images/osvaldo.png"},
+	{"name": "Hazel",    "size": 83,  "score": 15, "hitbox_scale": 0.92, "hitbox_offset_y": 0,    "image": "res://assets/images/hazel.png"},
+	{"name": "Mumbles",  "size": 92,  "score": 21, "hitbox_scale": 0.90, "hitbox_offset_y": 4.6,  "image": "res://assets/images/mumbles.png"},
+	{"name": "Sneaky",   "size": 106, "score": 28, "hitbox_scale": 0.90, "hitbox_offset_y": 2.3,  "image": "res://assets/images/sneaky.png"},
+	{"name": "Wendy",    "size": 115, "score": 36, "hitbox_scale": 0.94, "hitbox_offset_y": -1.1, "image": "res://assets/images/wendy.png"},
+	{"name": "Chatty",   "size": 150, "score": 45, "hitbox_scale": 0.82, "hitbox_offset_y": 5.8,  "image": "res://assets/images/chatty.png"},
+	{"name": "Cups",     "size": 173, "score": 55, "hitbox_scale": 0.92, "hitbox_offset_y": -1.1, "image": "res://assets/images/cups.png"},
+	{"name": "Kirk",     "size": 221, "score": 66, "hitbox_scale": 0.82, "hitbox_offset_y": 1.1,  "image": "res://assets/images/kirk.png"},
 ]
 
 func setup(type: int):
