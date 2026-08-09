@@ -341,16 +341,18 @@ func _input(event):
 		elif active_controller_area == 1:
 			animate_button_hover(start_button, false)
 		active_controller_area = -1  # mouse mode
+		Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
 		return
 
 	# Controller input
 	if not (event is InputEventJoypadButton or event is InputEventJoypadMotion):
 		return
 
-	# First controller input — activate controller mode
+	# First controller input — activate controller mode, starting on Classic
 	if active_controller_area == -1:
 		active_controller_area = 0
 		select_mode("classic")
+		Input.set_mouse_mode(Input.MOUSE_MODE_HIDDEN)
 		return
 
 	if nav_cooldown > 0.0:
@@ -358,24 +360,24 @@ func _input(event):
 
 	if active_controller_area == 0:
 		# Navigating between classic and chaos
-		if event.is_action_pressed("move_left"):
+		if _pressed_left(event):
 			select_mode("classic")
 			nav_cooldown = NAV_COOLDOWN_TIME
 			get_viewport().set_input_as_handled()
 
-		elif event.is_action_pressed("move_right"):
+		elif _pressed_right(event):
 			select_mode("chaos")
 			nav_cooldown = NAV_COOLDOWN_TIME
 			get_viewport().set_input_as_handled()
 
-		elif event.is_action_pressed("ui-down"):
+		elif _pressed_down(event):
 			# Move focus to start button
 			active_controller_area = 1
 			animate_button_hover(start_button, true)
 			nav_cooldown = NAV_COOLDOWN_TIME
 			get_viewport().set_input_as_handled()
 
-		elif event.is_action_pressed("ui-confirm"):
+		elif _pressed_confirm(event):
 			# First confirm picks the mode and moves to start
 			if selected_mode != "":
 				active_controller_area = 1
@@ -384,15 +386,61 @@ func _input(event):
 
 	elif active_controller_area == 1:
 		# Start button focused
-		if event.is_action_pressed("ui-up"):
+		if _pressed_up(event):
 			active_controller_area = 0
 			animate_button_hover(start_button, false)
+			# selected_mode is never cleared on the way down, so going back
+			# up simply lands on whichever card was picked. Re-asserting it
+			# guards the case where focus reached Start without a mode
+			# somehow being set.
+			if selected_mode == "":
+				select_mode("classic")
 			nav_cooldown = NAV_COOLDOWN_TIME
 			get_viewport().set_input_as_handled()
 
-		elif event.is_action_pressed("ui-confirm"):
+		elif _pressed_confirm(event):
 			_on_start_pressed()
 			get_viewport().set_input_as_handled()
+
+# The d-pad and left stick aren't bound to the ui-* actions in
+# project.godot, so they're read directly here alongside the actions. The
+# stick uses a threshold rather than any value, otherwise resting drift
+# would count as a press.
+const STICK_THRESHOLD := 0.55
+
+func _stick(event, axis: int, want_positive: bool) -> bool:
+	if not (event is InputEventJoypadMotion) or event.axis != axis:
+		return false
+	return event.axis_value > STICK_THRESHOLD if want_positive \
+		else event.axis_value < -STICK_THRESHOLD
+
+func _dpad(event, button: int) -> bool:
+	return event is InputEventJoypadButton and event.pressed \
+		and event.button_index == button
+
+func _pressed_left(event) -> bool:
+	return event.is_action_pressed("move_left") \
+		or _dpad(event, JOY_BUTTON_DPAD_LEFT) \
+		or _stick(event, JOY_AXIS_LEFT_X, false)
+
+func _pressed_right(event) -> bool:
+	return event.is_action_pressed("move_right") \
+		or _dpad(event, JOY_BUTTON_DPAD_RIGHT) \
+		or _stick(event, JOY_AXIS_LEFT_X, true)
+
+func _pressed_up(event) -> bool:
+	return event.is_action_pressed("ui-up") \
+		or _dpad(event, JOY_BUTTON_DPAD_UP) \
+		or _stick(event, JOY_AXIS_LEFT_Y, false)
+
+func _pressed_down(event) -> bool:
+	return event.is_action_pressed("ui-down") \
+		or _dpad(event, JOY_BUTTON_DPAD_DOWN) \
+		or _stick(event, JOY_AXIS_LEFT_Y, true)
+
+func _pressed_confirm(event) -> bool:
+	return event.is_action_pressed("ui-confirm") \
+		or _dpad(event, JOY_BUTTON_A)
 
 func _controller_deselect_modes():
 	animate_selection(classic_image, classic_title, false)

@@ -12,7 +12,7 @@ var lights_out_duration: float = 8.0
 
 # Powerup durations
 var double_points_duration: float = 15.0
-var extra_life_duration: float = 7.0
+var extra_life_duration: float = 30.0
 
 # Current active effects
 var is_rushtime_active: bool = false
@@ -600,6 +600,10 @@ func merge_clowns(clown1, clown2, merge_pos: Vector2, new_type: int):
 	
 	clown1.queue_free()
 	clown2.queue_free()
+	
+	# Defined in game_manager.gd. Needed here explicitly because this
+	# override reimplements merge_clowns rather than calling super.
+	spawn_merge_sparkles(merge_pos, new_type)
 	
 	await get_tree().create_timer(0.05).timeout
 	

@@ -86,14 +86,41 @@ func _ready():
 	buttons_initialized = true
 
 	# Setup menu controller after all buttons exist (now includes collection_button)
+	# Controller navigation.
+	#
+	# Order here defines the indices used by the link map below:
+	#   0 play  1 settings  2 exit          (centre column)
+	#   3 clowns  4 shop                    (bottom left)
+	#   5 wishlist  6 discord  7 credits    (bottom right)
 	menu_controller = MenuController.new()
 	menu_controller.setup(
 		self,
-		[play_button, settings_button, collection_button, shop_button, exit_button],
+		[play_button, settings_button, exit_button,
+		 collection_button, shop_button,
+		 wishlist_button, discord_button, credits_button],
 		Vector2(button_base_scale, button_base_scale),
 		Vector2(button_base_scale * 1.2, button_base_scale * 1.2),
 		hover_sound
 	)
+
+	# Explicit graph rather than geometry. Straight down from Exit is the
+	# middle of empty space — the nearest button by position is Wishlist over
+	# on the right, not Clowns on the left. Spelling it out keeps the reading
+	# order the player expects: down the column, then left to right along
+	# the bottom.
+	menu_controller.set_links({
+		0: {"down": 1},                                  # play
+		1: {"up": 0, "down": 2},                         # settings
+		2: {"up": 1, "down": 3},                         # exit
+		3: {"up": 2, "right": 4},                        # clowns
+		4: {"up": 2, "left": 3, "right": 5},             # shop
+		5: {"up": 2, "left": 4, "right": 6},             # wishlist
+		6: {"up": 2, "left": 5, "right": 7},             # discord
+		7: {"up": 2, "left": 6},                         # credits
+	})
+
+	# Play is where the controller starts.
+	menu_controller.select_index_silently(0)
 
 	print("=== Main Menu Ready ===")
 

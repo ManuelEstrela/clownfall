@@ -185,7 +185,7 @@ var current_clown_type: int = 0
 var next_clown_type: int = 0
 
 var debug_hitboxes: bool = false
-var test_mode: bool = false
+var test_mode: bool = true
 var test_clown_index: int = 0
 
 # Preview clown
@@ -209,6 +209,11 @@ var next_balloon_root: Node2D = null
 var click_sound: AudioStreamPlayer = null
 var game_over_sound: AudioStreamPlayer = null
 var pop_sounds: Array[AudioStreamPlayer] = []
+
+# Jail sounds
+var jail_handcuff_sound: AudioStreamPlayer = null
+var jail_door_sound: AudioStreamPlayer = null
+var jail_whistle_sounds: Array[AudioStreamPlayer] = []
 
 # Collision sounds (size-grouped)
 var collision_sound_small: AudioStreamPlayer = null
@@ -240,6 +245,9 @@ var jail_frame: Panel = null
 var jail_bars_root: Node2D = null
 var jail_prisoners: Node2D = null
 var jail_dim_overlay: ColorRect = null
+
+# Merge sparkles
+var sparkle_layer: Node2D = null
 
 # Drop guide
 var drop_guide = null
@@ -426,6 +434,7 @@ func _ready():
 	setup_drop_guide()
 	setup_clip_material()
 	setup_danger_line()
+	setup_sparkle_layer()
 	if debug_clip_bounds:
 		draw_debug_clip_bounds()
 
@@ -484,7 +493,35 @@ func setup_audio():
 	collision_sound_large.bus = "SFX"
 	add_child(collision_sound_large)
 
+	# ── Jail sounds ──
+	# Guarded on existence so the game still runs if these files are missing.
+	jail_handcuff_sound = _make_sound("res://assets/sounds/jail/handcuffs.mp3")
+	jail_door_sound = _make_sound("res://assets/sounds/jail/jaildoorclose.mp3")
+	for path in [
+		"res://assets/sounds/jail/police_whistle.mp3",
+		"res://assets/sounds/jail/police_whistle_2.mp3",
+	]:
+		var whistle = _make_sound(path)
+		if whistle:
+			jail_whistle_sounds.append(whistle)
+
 	print("✅ Audio setup complete (including collision sounds)!")
+
+func _make_sound(path: String, volume_db: float = 0.0) -> AudioStreamPlayer:
+	if not ResourceLoader.exists(path):
+		push_warning("Missing sound: " + path)
+		return null
+	var player = AudioStreamPlayer.new()
+	player.stream = load(path)
+	player.volume_db = volume_db
+	player.bus = "SFX"
+	add_child(player)
+	return player
+
+func play_jail_whistle():
+	if jail_whistle_sounds.is_empty():
+		return
+	jail_whistle_sounds[randi() % jail_whistle_sounds.size()].play()
 
 func setup_ui_balloons(viewport_size: Vector2, container_scale: float):
 	var balloon_texture = theme_manager.get_balloon_texture()
@@ -760,6 +797,11 @@ func setup_police_jail():
 
 # Matches the jail to whichever UI theme is active.
 func _jail_accent_color() -> Color:
+	return theme_accent_color()
+
+# The active theme's colour, used by the jail frame and the merge sparkles
+# so both follow whatever palette the player has equipped.
+func theme_accent_color() -> Color:
 	match theme_manager.current_theme:
 		"blue":   return Color(0.35, 0.55, 0.95)
 		"green":  return Color(0.40, 0.80, 0.45)
@@ -870,6 +912,21 @@ func get_arrestable_clowns() -> Array:
 		result.append(child)
 	return result
 
+# Triangle on PlayStation, Y on Xbox — both report as JOY_BUTTON_Y.
+func _pressed_arrest_toggle(event) -> bool:
+	if event is InputEventKey and event.pressed and not event.echo:
+		if event.keycode == KEY_CTRL or event.physical_keycode == KEY_CTRL:
+			return true
+	if event is InputEventJoypadButton and event.pressed \
+		and event.button_index == JOY_BUTTON_Y:
+		return true
+	return false
+
+# Aiming with a stick moves the OS cursor, so nothing else in the arrest
+# flow needs a separate controller path — hit-testing already works off the
+# mouse position.
+var arrest_cursor_speed: float = 900.0
+
 func enter_arrest_mode():
 	if arrest_mode or not can_arrest():
 		return
@@ -896,6 +953,9 @@ func enter_arrest_mode():
 		jail_dim_overlay.visible = true
 	if jail_meter_label:
 		jail_meter_label.text = "CLICK A CLOWN"
+	# The cursor may have been hidden by controller navigation; selection is
+	# cursor-driven, so bring it back for the duration.
+	Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
 
 func exit_arrest_mode():
 	if not arrest_mode:
@@ -923,6 +983,25 @@ func exit_arrest_mode():
 	if jail_dim_overlay:
 		jail_dim_overlay.visible = false
 	update_jail_ui()
+
+# Lets a controller drive the pointer during an arrest. Warping the real
+# cursor rather than tracking a separate reticle means clown_under_point()
+# and the mouse path stay identical — one code path, two input devices.
+func move_arrest_cursor(delta: float):
+	var stick = Vector2(
+		Input.get_joy_axis(0, JOY_AXIS_LEFT_X),
+		Input.get_joy_axis(0, JOY_AXIS_LEFT_Y)
+	)
+	if stick.length() < 0.2:
+		return
+	var viewport = get_viewport()
+	if viewport == null:
+		return
+	var pos = viewport.get_mouse_position() + stick * arrest_cursor_speed * delta
+	var bounds = get_viewport_rect().size
+	pos.x = clampf(pos.x, 0.0, bounds.x)
+	pos.y = clampf(pos.y, 0.0, bounds.y)
+	viewport.warp_mouse(pos)
 
 func update_arrest_hover():
 	var mouse = get_viewport().get_mouse_position()
@@ -990,6 +1069,7 @@ func confirm_arrest():
 	remove_clown(target)
 
 	arrests_banked -= 1
+	play_jail_whistle()
 
 	var slot = first_free_jail_slot()
 
@@ -1010,6 +1090,10 @@ func confirm_arrest():
 
 	if is_jail_full():
 		police_heat = 0
+		# Slams shut on the arrest that fills the last cell — not on every
+		# later attempt, so it marks the moment rather than nagging.
+		if jail_door_sound:
+			jail_door_sound.play()
 
 	update_jail_ui()
 
@@ -1180,6 +1264,9 @@ func merge_jail_pair(bottom: int, top: int, new_type: int):
 	if new_type < pop_sounds.size():
 		pop_sounds[new_type].play()
 
+	if jail_handcuff_mark_sound_due(new_type):
+		jail_handcuff_sound.play()
+
 	if jail_merge_awards_score:
 		score += ClownBallScript.CLOWNS[new_type].score
 		score_changed.emit(score)
@@ -1194,6 +1281,11 @@ func merge_jail_pair(bottom: int, top: int, new_type: int):
 	print("🚔 Jail merge -> ", ClownBallScript.CLOWNS[new_type].name)
 
 	update_jail_ui()
+
+# The handcuff sound belongs to the cuffing, not the merge — if handcuffing
+# is switched off, a jail merge shouldn't claim someone got cuffed.
+func jail_handcuff_mark_sound_due(_new_type: int) -> bool:
+	return jail_handcuff_merged and jail_handcuff_sound != null
 
 # Stamps the handcuff marker over a jailed clown.
 #
@@ -1436,6 +1528,166 @@ class DangerLine extends Node2D:
 		draw_circle(Vector2(half, 0), radius, c)
 
 # ══════════════════════════════════════════════════════════════════════
+#  MERGE SPARKLES
+#
+#  A hand-drawn burst on every merge. Lives on its own layer at z_index 1:
+#  above the container art (z 0) but below every clown except Kirk, so the
+#  sparks read as coming from behind the pile rather than pasted over it.
+#
+#  Defined here rather than in each manager because chaotic_manager.gd
+#  reimplements merge_clowns() instead of calling super — putting the
+#  spawner in the shared base means both modes get the same effect from
+#  one place.
+# ══════════════════════════════════════════════════════════════════════
+
+# Sparks per merge for the smallest clown, and for the largest. Rounded up
+# to a multiple of four so each diagonal gets an equal share.
+var sparkle_count_min: int = 12
+var sparkle_count_max: int = 28
+# Burst speed, as a multiple of the merged clown's radius per second.
+var sparkle_speed_min: float = 3.2
+var sparkle_speed_max: float = 6.4
+# Short on purpose — they snap out and are gone.
+var sparkle_lifetime: float = 0.38
+# Spark size relative to the clown's radius.
+var sparkle_size_fraction: float = 0.17
+# How wide each of the four diagonal cones spreads, in degrees.
+var sparkle_cone_degrees: float = 26.0
+
+func setup_sparkle_layer():
+	sparkle_layer = Node2D.new()
+	sparkle_layer.z_index = 1
+	add_child(sparkle_layer)
+
+func spawn_merge_sparkles(at: Vector2, clown_type: int):
+	if sparkle_layer == null:
+		return
+
+	var radius = ClownBallScript.CLOWNS[clown_type].size / 2.0
+
+	# Bigger merges throw more and larger sparks. t is where this clown sits
+	# in the chain, so the ramp stays right if the size table changes.
+	var t = float(clown_type) / float(max(1, ClownBallScript.CLOWNS.size() - 1))
+
+	var count = int(lerpf(sparkle_count_min, sparkle_count_max, t))
+	count = int(ceil(count / 4.0)) * 4
+
+	var burst = MergeSparkle.new()
+	burst.position = at
+	burst.spark_color = theme_accent_color()
+	burst.lifetime = sparkle_lifetime
+	burst.spark_size = radius * sparkle_size_fraction
+	burst.cone_radians = deg_to_rad(sparkle_cone_degrees)
+	burst.build(
+		count,
+		radius * sparkle_speed_min,
+		radius * sparkle_speed_max
+	)
+	# Same clip material the clowns use. It only discards on world position
+	# and never samples TEXTURE, so it works on drawn primitives too — which
+	# keeps sparks from a merge near a wall from spilling outside the box.
+	if clip_material:
+		burst.material = clip_material
+	sparkle_layer.add_child(burst)
+
+# Doodle-style sparks: flat fill, dark outline, wonky hand-drawn stars.
+#
+# The wobble on every star is baked in at build time, NOT re-rolled each
+# frame. Re-rolling would make each spark shimmer and boil, which reads as
+# noise rather than as a drawn shape.
+class MergeSparkle extends Node2D:
+	var spark_color: Color = Color.WHITE
+	var lifetime: float = 0.38
+	var spark_size: float = 6.0
+	var cone_radians: float = 0.45
+	var sparks: Array = []
+	var elapsed: float = 0.0
+
+	# The four diagonals sparks fly along: down-right, down-left, up-left,
+	# up-right. Straight radial spread looked like a shockwave; four legs
+	# reads much more like a drawn "pop".
+	const DIAGONALS := [PI * 0.25, PI * 0.75, PI * 1.25, PI * 1.75]
+
+	func build(count: int, speed_min: float, speed_max: float):
+		for i in range(count):
+			var base_angle = DIAGONALS[i % DIAGONALS.size()]
+			var angle = base_angle + randf_range(-cone_radians, cone_radians)
+			var speed = randf_range(speed_min, speed_max)
+			sparks.append({
+				"pos": Vector2.ZERO,
+				"vel": Vector2(cos(angle), sin(angle)) * speed,
+				"scale": randf_range(0.65, 1.4),
+				"rot": randf_range(0.0, TAU),
+				"spin": randf_range(-7.0, 7.0),
+				"tint": randf_range(-0.18, 0.28),
+				"delay": randf_range(0.0, 0.05),
+				"shape": _make_doodle_star(),
+			})
+
+	# A 4-point star in unit space with every vertex nudged off true, so no
+	# two sparks are the same shape and none of them look machine-made.
+	func _make_doodle_star() -> PackedVector2Array:
+		var verts := PackedVector2Array()
+		var tips := 4
+		for i in range(tips * 2):
+			var angle = TAU * float(i) / float(tips * 2)
+			angle += randf_range(-0.12, 0.12)
+			var r = 1.0 if i % 2 == 0 else 0.34
+			r *= randf_range(0.78, 1.22)
+			verts.append(Vector2(cos(angle), sin(angle)) * r)
+		return verts
+
+	func _process(delta):
+		elapsed += delta
+		if elapsed >= lifetime:
+			queue_free()
+			return
+
+		for spark in sparks:
+			if elapsed < spark.delay:
+				continue
+			# Heavy drag with only light gravity. They punch outward, stall,
+			# and vanish — they aren't meant to fall like debris.
+			spark.vel *= 1.0 - clampf(delta * 6.5, 0.0, 1.0)
+			spark.vel.y += 90.0 * delta
+			spark.pos += spark.vel * delta
+			spark.rot += spark.spin * delta
+		queue_redraw()
+
+	func _draw():
+		var t = clampf(elapsed / lifetime, 0.0, 1.0)
+		# Hold full opacity most of the way, then drop off fast.
+		var fade = 1.0 - pow(t, 2.5)
+
+		for spark in sparks:
+			if elapsed < spark.delay:
+				continue
+			# Pop to full size quickly, then shrink away to nothing.
+			var grow = clampf((elapsed - spark.delay) / 0.07, 0.0, 1.0)
+			var size = spark_size * spark.scale * grow * (1.0 - t * 0.7)
+			if size <= 0.4:
+				continue
+
+			var fill = spark_color.lightened(spark.tint) if spark.tint > 0.0 \
+				else spark_color.darkened(-spark.tint)
+			fill.a = fade
+			var outline = spark_color.darkened(0.6)
+			outline.a = fade
+
+			var points := PackedVector2Array()
+			for v in spark.shape:
+				points.append(spark.pos + v.rotated(spark.rot) * size)
+
+			draw_colored_polygon(points, fill)
+
+			# Closing the loop by hand: draw_polyline doesn't join the last
+			# point back to the first, which would leave a visible gap in
+			# the ink outline.
+			var closed := points.duplicate()
+			closed.append(points[0])
+			draw_polyline(closed, outline, maxf(1.0, size * 0.22), true)
+
+# ══════════════════════════════════════════════════════════════════════
 #  DROP GUIDE LINE
 # ══════════════════════════════════════════════════════════════════════
 
@@ -1536,17 +1788,18 @@ func _input(event):
 	if game_over:
 		return
 
-	# ── Police Jail: CTRL toggles selection ──
-	if jail_enabled and event is InputEventKey and event.pressed and not event.echo:
-		if event.keycode == KEY_CTRL or event.physical_keycode == KEY_CTRL:
-			if arrest_mode:
-				exit_arrest_mode()
-			else:
-				enter_arrest_mode()
-			get_viewport().set_input_as_handled()
-			return
+	# ── Police Jail: CTRL, or Triangle / Y on a controller ──
+	if jail_enabled and _pressed_arrest_toggle(event):
+		if arrest_mode:
+			exit_arrest_mode()
+		else:
+			enter_arrest_mode()
+		get_viewport().set_input_as_handled()
+		return
 
-	# While aiming, clicks pick a target instead of dropping.
+	# While aiming, clicks pick a target instead of dropping. On a controller
+	# the cursor is made visible for this (see enter_arrest_mode) and the
+	# right stick nudges it, so A confirms whatever it's over and B backs out.
 	if arrest_mode:
 		if event is InputEventMouseButton and event.pressed:
 			if event.button_index == MOUSE_BUTTON_LEFT:
@@ -1554,6 +1807,13 @@ func _input(event):
 			elif event.button_index == MOUSE_BUTTON_RIGHT:
 				exit_arrest_mode()
 			get_viewport().set_input_as_handled()
+		elif event is InputEventJoypadButton and event.pressed:
+			if event.button_index == JOY_BUTTON_A:
+				confirm_arrest()
+				get_viewport().set_input_as_handled()
+			elif event.button_index == JOY_BUTTON_B:
+				exit_arrest_mode()
+				get_viewport().set_input_as_handled()
 		return
 
 	if event is InputEventMouseMotion:
@@ -1578,6 +1838,7 @@ func _process(delta):
 	update_danger_line(delta)
 
 	if arrest_mode:
+		move_arrest_cursor(delta)
 		update_arrest_hover()
 		return  # world is frozen while aiming
 
@@ -1727,6 +1988,8 @@ func merge_clowns(clown1, clown2, merge_pos: Vector2, new_type: int):
 
 	clown1.queue_free()
 	clown2.queue_free()
+
+	spawn_merge_sparkles(merge_pos, new_type)
 
 	await get_tree().create_timer(0.05).timeout
 
