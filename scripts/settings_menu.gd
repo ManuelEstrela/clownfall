@@ -83,7 +83,20 @@ const NAV_CD: float = 0.22
 const ADJ_CD: float = 0.06
 const AXIS_THRESHOLD: float = 0.3
 
-var ctrl_highlight: ColorRect = null
+var ctrl_highlight: Panel = null
+
+# Left-stick latching. project.godot binds ui-up / ui-down / move_left /
+# move_right to KEYS only — no joypad axes — so the stick produces no
+# actions at all and navigation has to read it directly. A direction fires
+# once when the stick crosses ACTIVATION and won't fire again until it
+# falls back under RELEASE; without that gap a held stick emits a motion
+# event every frame and the cursor bolts across the panel.
+const STICK_ACTIVATE: float = 0.55
+const STICK_RELEASE: float = 0.35
+var _stick_latch: Dictionary = {"x": 0, "y": 0}
+
+# How fast the right stick sweeps a slider, in value units per second.
+const SLIDER_ADJUST_SPEED: float = 0.9
 
 # panel_grid["audio"] = [
 #   [ {left cell row0}, {right cell row0} ],
@@ -121,8 +134,15 @@ func _ready():
 #  HIGHLIGHT
 # ══════════════════════════════════════════════════════════════
 func setup_ctrl_highlight():
-	ctrl_highlight = ColorRect.new()
-	ctrl_highlight.color = Color(1, 1, 1, 0.15)
+	ctrl_highlight = Panel.new()
+	# A faint fill alone was hard to spot against the panel art, so this
+	# carries a bright border too.
+	var box := StyleBoxFlat.new()
+	box.bg_color = Color(1, 1, 1, 0.10)
+	box.border_color = Color(1, 0.85, 0.30, 0.95)
+	box.set_border_width_all(3)
+	box.set_corner_radius_all(8)
+	ctrl_highlight.add_theme_stylebox_override("panel", box)
 	ctrl_highlight.visible = false
 	ctrl_highlight.z_index = 5
 	ctrl_highlight.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -171,27 +191,31 @@ func _process(delta):
 		return
 
 	if cell.type == "slider":
+		# Scaled by delta and NOT rate-limited, so the volume sweeps
+		# smoothly with how far the stick is pushed. The old fixed step on a
+		# cooldown moved in visible jerks and took several seconds end to end.
 		var slider: HSlider = cell.node
-		slider.value = clampf(slider.value + rx * 0.018, 0.0, 1.0)
-		ctrl_adj_cd = ADJ_CD
+		slider.value = clampf(slider.value + rx * SLIDER_ADJUST_SPEED * delta, 0.0, 1.0)
 
 	elif cell.type == "selector":
-		if ctrl_adj_cd <= 0.0:
-			if rx > 0:
-				cell.node.get_node("Right").emit_signal("pressed")
-			else:
-				cell.node.get_node("Left").emit_signal("pressed")
-			ctrl_adj_cd = NAV_CD
+		# Selectors are discrete, so these still step one at a time.
+		if rx > 0:
+			cell.node.get_node("Right").emit_signal("pressed")
+		else:
+			cell.node.get_node("Left").emit_signal("pressed")
+		ctrl_adj_cd = NAV_CD
 
 # ══════════════════════════════════════════════════════════════
 #  INPUT
 # ══════════════════════════════════════════════════════════════
 func _input(event):
 	# Circle / ESC — always go back
-	if event.is_action_pressed("ui_cancel"):
+	if _pressed_back(event):
 		if not listening_for_key:
+			var vp = get_viewport()
+			if vp:
+				vp.set_input_as_handled()
 			_on_back_pressed()
-			get_viewport().set_input_as_handled()
 		return
 
 	# Mouse movement — switch to mouse mode
@@ -212,8 +236,11 @@ func _input(event):
 			_refresh_cat_visuals()
 		return
 
-	# Filter axis drift
+	# Releasing the stick clears its latch so the next push registers. This
+	# has to happen before the drift filter bails out, otherwise the latch
+	# would never reset and the stick would work exactly once.
 	if event is InputEventJoypadMotion:
+		_update_stick_latch(event)
 		if abs(event.axis_value) < AXIS_THRESHOLD:
 			return
 
@@ -230,81 +257,84 @@ func _input(event):
 		_refresh_cat_visuals()
 		return
 
-	# ── Category column (ctrl_col == -1) ──────────────────────
+	var dir := _nav_dir(event)
+	var confirm := _pressed_confirm(event)
+
+	# ── Category column ───────────────────────────────────────
+	#
+	# The category buttons sit at NAV_X = 970, to the RIGHT of the panel
+	# (which ends at 55 + 880 = 935). The original code had this backwards —
+	# it entered the panel on "right" and treated "left" as a wall, which is
+	# the opposite of where the two actually are on screen.
 	if ctrl_col == -1:
-		if event.is_action_pressed("ui-up") and ctrl_nav_cd <= 0.0:
+		if dir == "up" and ctrl_nav_cd <= 0.0:
 			# Hard boundary — can't go above first category
 			if ctrl_cat_index > 0:
 				ctrl_cat_index -= 1
 				switch_category(CATEGORIES[ctrl_cat_index])
 				_refresh_cat_visuals()
 				ctrl_nav_cd = NAV_CD
-			get_viewport().set_input_as_handled()
+			_consume()
 
-		elif event.is_action_pressed("ui-down") and ctrl_nav_cd <= 0.0:
+		elif dir == "down" and ctrl_nav_cd <= 0.0:
 			# Hard boundary — can't go below last category
 			if ctrl_cat_index < CATEGORIES.size() - 1:
 				ctrl_cat_index += 1
 				switch_category(CATEGORIES[ctrl_cat_index])
 				_refresh_cat_visuals()
 				ctrl_nav_cd = NAV_CD
-			get_viewport().set_input_as_handled()
+			_consume()
 
-		elif event.is_action_pressed("move_right") and ctrl_nav_cd <= 0.0:
-			# Enter panel grid at col 0, row 0
-			ctrl_col = 0
-			ctrl_row = 0
-			_highlight_current()
+		elif (dir == "left" or confirm) and ctrl_nav_cd <= 0.0:
+			# Into the panel, landing on the top-left control.
+			_enter_panel()
 			ctrl_nav_cd = NAV_CD
-			get_viewport().set_input_as_handled()
+			_consume()
 
-		elif event.is_action_pressed("move_left") and ctrl_nav_cd <= 0.0:
-			# Hard boundary — already in leftmost zone, do nothing
-			get_viewport().set_input_as_handled()
-
-		elif event.is_action_pressed("ui-confirm"):
-			# Confirm in category nav enters the panel
-			ctrl_col = 0
-			ctrl_row = 0
-			_highlight_current()
-			get_viewport().set_input_as_handled()
+		elif dir == "right" and ctrl_nav_cd <= 0.0:
+			# Hard boundary — nothing further right than the category list.
+			_consume()
 
 	# ── Panel grid ────────────────────────────────────────────
 	else:
 		var grid = panel_grid.get(current_category, [])
 
-		if event.is_action_pressed("move_left") and ctrl_nav_cd <= 0.0:
+		if dir == "left" and ctrl_nav_cd <= 0.0:
 			if ctrl_col > 0:
 				ctrl_col -= 1
 				_highlight_current()
 				ctrl_nav_cd = NAV_CD
-			# Hard boundary — col 0, do nothing, stay on current cell
-			get_viewport().set_input_as_handled()
+			# Hard boundary at col 0 — the panel's left edge.
+			_consume()
 
-		elif event.is_action_pressed("move_right") and ctrl_nav_cd <= 0.0:
-			# Only move right if right cell exists and is not empty
+		elif dir == "right" and ctrl_nav_cd <= 0.0:
+			var moved := false
 			if ctrl_col == 0:
 				var row = grid[ctrl_row] if ctrl_row < grid.size() else []
 				if row.size() > 1 and row[1].type != "none":
 					ctrl_col = 1
 					_highlight_current()
-					ctrl_nav_cd = NAV_CD
-			# Hard boundary — already at rightmost filled cell, do nothing
-			get_viewport().set_input_as_handled()
+					moved = true
+			if not moved:
+				# Already at the rightmost filled cell, so right leaves the
+				# panel and lands back on the category list.
+				_leave_panel()
+			ctrl_nav_cd = NAV_CD
+			_consume()
 
-		elif event.is_action_pressed("ui-up") and ctrl_nav_cd <= 0.0:
+		elif dir == "up" and ctrl_nav_cd <= 0.0:
 			if ctrl_row > 0:
 				ctrl_row -= 1
-				# If right col selected but new row has no right cell, clamp to left
+				# If the right column is selected but this row has no right
+				# cell, fall back to the left one.
 				var row = grid[ctrl_row] if ctrl_row < grid.size() else []
 				if ctrl_col == 1 and (row.size() < 2 or row[1].type == "none"):
 					ctrl_col = 0
 				_highlight_current()
 				ctrl_nav_cd = NAV_CD
-			# Hard boundary — row 0, do nothing, stay on current cell
-			get_viewport().set_input_as_handled()
+			_consume()
 
-		elif event.is_action_pressed("ui-down") and ctrl_nav_cd <= 0.0:
+		elif dir == "down" and ctrl_nav_cd <= 0.0:
 			if ctrl_row < grid.size() - 1:
 				ctrl_row += 1
 				var row = grid[ctrl_row] if ctrl_row < grid.size() else []
@@ -312,10 +342,9 @@ func _input(event):
 					ctrl_col = 0
 				_highlight_current()
 				ctrl_nav_cd = NAV_CD
-			# Hard boundary — last row, do nothing
-			get_viewport().set_input_as_handled()
+			_consume()
 
-		elif event.is_action_pressed("ui-confirm") and ctrl_row < grid.size():
+		elif confirm and ctrl_row < grid.size():
 			var row = grid[ctrl_row]
 			if ctrl_col < row.size():
 				var cell = row[ctrl_col]
@@ -325,7 +354,7 @@ func _input(event):
 					cb.toggled.emit(cb.button_pressed)
 				elif cell.type == "keybind":
 					cell.node.emit_signal("pressed")
-			get_viewport().set_input_as_handled()
+			_consume()
 
 func _unhandled_input(event):
 	if not listening_for_key:
@@ -349,6 +378,107 @@ func _unhandled_input(event):
 # ══════════════════════════════════════════════════════════════
 #  CONTROLLER HELPERS
 # ══════════════════════════════════════════════════════════════
+
+func _consume():
+	var vp = get_viewport()
+	if vp:
+		vp.set_input_as_handled()
+
+# Updates the latch for whichever axis this event belongs to, and reports
+# the direction if this push is a fresh one.
+func _update_stick_latch(event: InputEventJoypadMotion) -> String:
+	var key := ""
+	if event.axis == JOY_AXIS_LEFT_X:
+		key = "x"
+	elif event.axis == JOY_AXIS_LEFT_Y:
+		key = "y"
+	else:
+		return ""
+
+	var value = event.axis_value
+
+	if abs(value) < STICK_RELEASE:
+		_stick_latch[key] = 0
+		return ""
+
+	var sign_now := 0
+	if value > STICK_ACTIVATE:
+		sign_now = 1
+	elif value < -STICK_ACTIVATE:
+		sign_now = -1
+
+	if sign_now == 0 or _stick_latch[key] == sign_now:
+		return ""
+
+	_stick_latch[key] = sign_now
+	if key == "x":
+		return "right" if sign_now > 0 else "left"
+	return "down" if sign_now > 0 else "up"
+
+# One direction for all three input styles: the mapped keyboard actions,
+# the d-pad, and the left stick.
+func _nav_dir(event) -> String:
+	if event is InputEventJoypadMotion:
+		return _update_stick_latch(event)
+
+	if event is InputEventJoypadButton and event.pressed:
+		match event.button_index:
+			JOY_BUTTON_DPAD_UP: return "up"
+			JOY_BUTTON_DPAD_DOWN: return "down"
+			JOY_BUTTON_DPAD_LEFT: return "left"
+			JOY_BUTTON_DPAD_RIGHT: return "right"
+
+	if event.is_action_pressed("ui-up"):
+		return "up"
+	if event.is_action_pressed("ui-down"):
+		return "down"
+	if event.is_action_pressed("move_left"):
+		return "left"
+	if event.is_action_pressed("move_right"):
+		return "right"
+	return ""
+
+# Cross on PlayStation, A on Xbox — both report as JOY_BUTTON_A.
+func _pressed_confirm(event) -> bool:
+	if event is InputEventJoypadButton and event.pressed \
+		and event.button_index == JOY_BUTTON_A:
+		return true
+	return event.is_action_pressed("ui-confirm")
+
+# project.godot binds Escape to "ui-cancel" — with a HYPHEN. This was
+# checking Godot's built-in "ui_cancel" (underscore), a different action
+# that the key isn't bound to, so Escape did nothing on this screen.
+func _pressed_back(event) -> bool:
+	if event is InputEventJoypadButton and event.pressed \
+		and event.button_index == JOY_BUTTON_B:
+		return true
+	if InputMap.has_action("ui-cancel") and event.is_action_pressed("ui-cancel"):
+		return true
+	if InputMap.has_action("ui_cancel") and event.is_action_pressed("ui_cancel"):
+		return true
+	if event is InputEventKey and event.pressed and not event.echo \
+		and event.keycode == KEY_ESCAPE:
+		return true
+	return false
+
+# Moves focus from the category list into the panel, at the top-left
+# control. Statistics has no adjustable cells, so focus stays put there
+# rather than landing on nothing.
+func _enter_panel():
+	var grid = panel_grid.get(current_category, [])
+	if grid.is_empty():
+		return
+	ctrl_col = 0
+	ctrl_row = 0
+	_highlight_current()
+	_refresh_cat_visuals()
+
+func _leave_panel():
+	ctrl_col = -1
+	ctrl_cat_index = CATEGORIES.find(current_category)
+	_hide_highlight()
+	_refresh_cat_visuals()
+
 func _highlight_current():
 	var grid = panel_grid.get(current_category, [])
 	if ctrl_row >= grid.size():
