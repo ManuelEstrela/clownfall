@@ -587,6 +587,7 @@ func merge_clowns(clown1, clown2, merge_pos: Vector2, new_type: int):
 	
 	score += points
 	score_changed.emit(score)
+	run_peak_tier = maxi(run_peak_tier, new_type)
 	
 	if score_label:
 		score_label.text = str(score)

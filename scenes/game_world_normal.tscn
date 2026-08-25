@@ -1,10 +1,11 @@
-[gd_scene load_steps=9 format=3 uid="uid://bpabai10hly68"]
+[gd_scene load_steps=10 format=3 uid="uid://bpabai10hly68"]
 
 [ext_resource type="Script" uid="uid://dfsfcewdndt8m" path="res://scripts/game_manager.gd" id="1_x4uxy"]
 [ext_resource type="Texture2D" uid="uid://bskmjqpsooawm" path="res://assets/images/container.png" id="2_o0a3u"]
 [ext_resource type="PackedScene" uid="uid://b6cgppxwy3dfv" path="res://ui/game_ui.tscn" id="3_qc56g"]
 [ext_resource type="PackedScene" uid="uid://cx3qn0kp8aokt" path="res://ui/leaderboard_ui.tscn" id="4_d17v2"]
 [ext_resource type="PackedScene" uid="uid://cgahyj7qreci3" path="res://scenes/pause_menu.tscn" id="5_o0a3u"]
+[ext_resource type="PackedScene" path="res://scenes/game_over_menu.tscn" id="6_gomenu_n"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_47u71"]
 size = Vector2(39, 1273)
@@ -54,6 +55,8 @@ offset_bottom = 40.0
 [node name="Control" parent="Control" instance=ExtResource("4_d17v2")]
 
 [node name="PauseMenu" parent="." instance=ExtResource("5_o0a3u")]
+
+[node name="GameOverMenu" parent="." instance=ExtResource("6_gomenu_n")]
 
 [connection signal="game_over_triggered" from="." to="GameUI" method="show_game_over"]
 [connection signal="score_changed" from="." to="GameUI" method="update_score"]

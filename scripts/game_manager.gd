@@ -179,13 +179,25 @@ var debug_clip_bounds: bool = false
 
 # Game state
 var score: int = 0
+# Per-run stats for the game over screen.
+#
+# These can't come from SettingsManager: highest_tier_created there is an
+# ALL-TIME record, so a bad run would still report Kirk if you'd ever made
+# one. Arrests weren't counted anywhere at all.
+#
+# run_peak_tier is the biggest clown that was ever IN the container, not
+# just the biggest produced by a merge. Test mode makes the difference
+# obvious — it drops the chain in order, so Kirk can sit in the box having
+# never been merged into.
+var run_peak_tier: int = 0
+var run_arrests: int = 0
 var game_over: bool = false
 var can_drop: bool = true
 var current_clown_type: int = 0
 var next_clown_type: int = 0
 
 var debug_hitboxes: bool = false
-var test_mode: bool = false
+var test_mode: bool = true
 var test_clown_index: int = 0
 
 # Preview clown
@@ -465,6 +477,10 @@ func setup_audio():
 	game_over_sound.stream = load("res://assets/sounds/game_over.mp3")
 	game_over_sound.volume_db = 0
 	game_over_sound.bus = "SFX"
+	# The game over panel pauses the tree, and a paused AudioStreamPlayer
+	# stops advancing — which cut this sound off partway through. This one
+	# player keeps running while paused so the sting finishes.
+	game_over_sound.process_mode = Node.PROCESS_MODE_ALWAYS
 	add_child(game_over_sound)
 
 	for i in range(11):
@@ -1069,6 +1085,7 @@ func confirm_arrest():
 	remove_clown(target)
 
 	arrests_banked -= 1
+	run_arrests += 1
 	play_jail_whistle()
 
 	var slot = first_free_jail_slot()
@@ -1266,6 +1283,8 @@ func merge_jail_pair(bottom: int, top: int, new_type: int):
 
 	if jail_handcuff_mark_sound_due(new_type):
 		jail_handcuff_sound.play()
+
+	run_peak_tier = maxi(run_peak_tier, new_type)
 
 	if jail_merge_awards_score:
 		score += ClownBallScript.CLOWNS[new_type].score
@@ -1914,6 +1933,7 @@ func drop_clown():
 	apply_clip_material(new_clown)
 
 	set_meta("last_dropped_clown", new_clown)
+	run_peak_tier = maxi(run_peak_tier, drop_type)
 
 	var settings = get_node_or_null("/root/SettingsManager")
 	if settings:
@@ -1957,6 +1977,7 @@ func merge_clowns(clown1, clown2, merge_pos: Vector2, new_type: int):
 	var points = ClownBallScript.CLOWNS[new_type].score
 	score += points
 	score_changed.emit(score)
+	run_peak_tier = maxi(run_peak_tier, new_type)
 
 	if score_label:
 		score_label.text = str(score)
@@ -2101,5 +2122,40 @@ func trigger_game_over():
 
 	game_over_triggered.emit(score)
 
-	await get_tree().create_timer(3.0).timeout
-	get_tree().reload_current_scene()
+	# The scene used to reload itself after three seconds. The panel now
+	# owns what happens next, so the run stays on screen until the player
+	# picks Restart or Main Menu.
+	await get_tree().create_timer(0.8).timeout
+	show_game_over_panel()
+
+# The panel is a sibling CanvasLayer in the world scene, found by group so
+# neither mode needs a hard node path. Chaos inherits this untouched.
+func show_game_over_panel():
+	var panel = get_tree().get_first_node_in_group("game_over_menu")
+	if panel == null:
+		# No panel in the scene — fall back to the old behaviour rather than
+		# leaving the player stuck on a dead board.
+		push_warning("No game_over_menu in scene; reloading instead.")
+		await get_tree().create_timer(2.0).timeout
+		get_tree().reload_current_scene()
+		return
+
+	# Final sweep of whatever is still in the box. Drops and merges already
+	# record as they happen; this catches any clown that reached the
+	# container by another route (chaos events, powerups) without each of
+	# those needing to remember to update the stat.
+	for child in get_children():
+		if child is ClownBall and child != preview_clown:
+			run_peak_tier = maxi(run_peak_tier, child.clown_type)
+
+	var best := 0
+	var settings = get_node_or_null("/root/SettingsManager")
+	if settings:
+		best = settings.best_score
+
+	panel.show_results({
+		"score": score,
+		"best": best,
+		"peak_tier": run_peak_tier,
+		"arrests": run_arrests,
+	})
