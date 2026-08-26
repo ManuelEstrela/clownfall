@@ -78,11 +78,21 @@ var merge_axis_influence: float = 0.35
 # without needing any edit to chaotic_manager.gd.
 
 # How many drops fill the meter once.
-var drops_per_arrest: int = 10
+# Drops needed for the FIRST arrest. Each later arrest costs one more step
+# than the last: 25, then 50, then 75... so the jail gets progressively
+# harder to fill rather than every cell costing the same.
+var heat_step: int = 25
+# Grace period between the goal-hitting drop and the pile freezing, so that
+# clown has time to actually land instead of being caught in mid-air.
+# Dropping is blocked for the duration.
+var arrest_delay: float = 1.3
 # How many clowns fit behind bars (3 columns x 2 rows). Lower this to 3 when
 # you want capacity to actually bite and force the player to ration arrests.
 var jail_capacity: int = 6
 # How many unspent arrests can be held at once.
+# An arrest is now forced the moment the meter fills, so there is never
+# more than one outstanding — this only exists to keep the meter pinned
+# while the player is choosing.
 var max_banked_arrests: int = 1
 # How much the hovered clown swells while you're aiming at it.
 var arrest_hover_scale: float = 1.28
@@ -197,7 +207,7 @@ var current_clown_type: int = 0
 var next_clown_type: int = 0
 
 var debug_hitboxes: bool = false
-var test_mode: bool = true
+var test_mode: bool = false
 var test_clown_index: int = 0
 
 # Preview clown
@@ -236,6 +246,13 @@ var collision_sound_large: AudioStreamPlayer = null
 var jail_enabled: bool = false
 var police_heat: int = 0
 var arrests_banked: int = 0
+# Set when the meter fills but the arrest can't start yet — the container
+# might be momentarily empty, or a merge could be resolving. Retried on the
+# next drop rather than being silently dropped.
+var pending_forced_arrest: bool = false
+# True during the grace period above. Blocks dropping so the player can't
+# keep feeding the container while the arrest is on its way.
+var arrest_incoming: bool = false
 # One entry per jail slot, null when empty. Index order is bottom row
 # left-to-right, then top row — so slot 0 sits directly below slot 3.
 # A plain append-only list can't express this: merging frees a slot in the
@@ -830,22 +847,73 @@ func theme_accent_color() -> Color:
 #  POLICE JAIL — HEAT
 # ══════════════════════════════════════════════════════════════════════
 
+# Drops required for the next arrest. run_arrests only ever counts up, so
+# this is 25 for the first, 50 for the second, and so on — and unlike
+# reading the jail's occupancy it doesn't reset when a jail merge frees a
+# cell, which would otherwise let the player buy the same cheap arrest twice.
+func current_heat_goal() -> int:
+	return heat_step * (run_arrests + 1)
+
 func add_police_heat():
 	if not jail_enabled or game_over:
 		return
-	# Meter pins when there's nowhere to put a prisoner, or the player is
-	# already sitting on an unspent arrest.
+
+	# A forced arrest that couldn't start last time gets first go, before
+	# any more heat is counted.
+	if pending_forced_arrest:
+		# Same grace period on a retry — this drop needs to land too.
+		_begin_forced_arrest_countdown()
+		update_jail_ui()
+		return
+
+	# Meter pins when there's nowhere left to put a prisoner, or an arrest
+	# is already underway.
 	if is_jail_full() or arrests_banked >= max_banked_arrests:
 		update_jail_ui()
 		return
 
 	police_heat += 1
-	if police_heat >= drops_per_arrest:
+	if police_heat >= current_heat_goal():
 		police_heat = 0
 		arrests_banked += 1
 		arrest_banked.emit()
 		pulse_jail_frame()
+		# No prompt any more — hitting the goal IS the trigger, after a
+		# short delay so the clown that filled the meter can land.
+		_begin_forced_arrest_countdown()
 	update_jail_ui()
+
+# Waits out the grace period, then starts the selection.
+#
+# The wait is deliberately NOT part of drop_clown's own 0.5s preview timer:
+# that one governs how soon the next clown appears in the van, and tying the
+# two together would mean changing one silently changes the other.
+func _begin_forced_arrest_countdown():
+	if arrest_incoming:
+		return
+	arrest_incoming = true
+	update_jail_ui()
+
+	await get_tree().create_timer(arrest_delay).timeout
+
+	arrest_incoming = false
+	if game_over:
+		return
+	_try_start_forced_arrest()
+	update_jail_ui()
+
+# Starts the forced selection, or holds it over if there's nothing to
+# arrest yet. Without the hold, filling the meter on a drop that leaves the
+# container empty would burn the arrest for nothing.
+func _try_start_forced_arrest():
+	if is_jail_full() or game_over:
+		pending_forced_arrest = false
+		return
+	if get_arrestable_clowns().is_empty():
+		pending_forced_arrest = true
+		return
+	pending_forced_arrest = false
+	enter_arrest_mode()
 
 func is_jail_full() -> bool:
 	return jail_occupied_count() >= jail_capacity
@@ -872,7 +940,7 @@ func can_arrest() -> bool:
 func heat_ratio() -> float:
 	if is_jail_full() or arrests_banked >= max_banked_arrests:
 		return 1.0
-	return clampf(float(police_heat) / float(max(1, drops_per_arrest)), 0.0, 1.0)
+	return clampf(float(police_heat) / float(max(1, current_heat_goal())), 0.0, 1.0)
 
 func update_jail_ui():
 	if not jail_enabled or jail_meter_fill == null:
@@ -892,10 +960,12 @@ func update_jail_ui():
 	if jail_meter_label and not arrest_mode:
 		if is_jail_full():
 			jail_meter_label.text = "JAIL FULL  %d/%d" % [jail_occupied_count(), jail_capacity]
+		elif arrest_incoming:
+			jail_meter_label.text = "POLICE INCOMING..."
 		elif arrests_banked > 0:
-			jail_meter_label.text = "PRESS CTRL TO ARREST"
+			jail_meter_label.text = "ARREST READY"
 		else:
-			jail_meter_label.text = "POLICE HEAT %d/%d" % [police_heat, drops_per_arrest]
+			jail_meter_label.text = "POLICE HEAT %d/%d" % [police_heat, current_heat_goal()]
 
 func pulse_jail_frame():
 	if jail_frame == null:
@@ -928,16 +998,6 @@ func get_arrestable_clowns() -> Array:
 		result.append(child)
 	return result
 
-# Triangle on PlayStation, Y on Xbox — both report as JOY_BUTTON_Y.
-func _pressed_arrest_toggle(event) -> bool:
-	if event is InputEventKey and event.pressed and not event.echo:
-		if event.keycode == KEY_CTRL or event.physical_keycode == KEY_CTRL:
-			return true
-	if event is InputEventJoypadButton and event.pressed \
-		and event.button_index == JOY_BUTTON_Y:
-		return true
-	return false
-
 # Aiming with a stick moves the OS cursor, so nothing else in the arrest
 # flow needs a separate controller path — hit-testing already works off the
 # mouse position.
@@ -968,7 +1028,7 @@ func enter_arrest_mode():
 	if jail_dim_overlay:
 		jail_dim_overlay.visible = true
 	if jail_meter_label:
-		jail_meter_label.text = "CLICK A CLOWN"
+		jail_meter_label.text = "CHOOSE A CLOWN TO ARREST"
 	# The cursor may have been hidden by controller navigation; selection is
 	# cursor-driven, so bring it back for the duration.
 	Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
@@ -1807,32 +1867,22 @@ func _input(event):
 	if game_over:
 		return
 
-	# ── Police Jail: CTRL, or Triangle / Y on a controller ──
-	if jail_enabled and _pressed_arrest_toggle(event):
-		if arrest_mode:
-			exit_arrest_mode()
-		else:
-			enter_arrest_mode()
-		get_viewport().set_input_as_handled()
-		return
-
-	# While aiming, clicks pick a target instead of dropping. On a controller
-	# the cursor is made visible for this (see enter_arrest_mode) and the
-	# right stick nudges it, so A confirms whatever it's over and B backs out.
+	# The CTRL / Triangle toggle is gone: an arrest now starts on its own the
+	# moment the meter fills.
+	#
+	# The cancel bindings went with it. They can't stay, because there is no
+	# longer any way to re-open the selection — backing out would strand the
+	# banked arrest with no route to spend it. So while aiming, the only
+	# thing to do is pick a clown.
 	if arrest_mode:
-		if event is InputEventMouseButton and event.pressed:
-			if event.button_index == MOUSE_BUTTON_LEFT:
-				confirm_arrest()
-			elif event.button_index == MOUSE_BUTTON_RIGHT:
-				exit_arrest_mode()
+		if event is InputEventMouseButton and event.pressed \
+			and event.button_index == MOUSE_BUTTON_LEFT:
+			confirm_arrest()
 			get_viewport().set_input_as_handled()
-		elif event is InputEventJoypadButton and event.pressed:
-			if event.button_index == JOY_BUTTON_A:
-				confirm_arrest()
-				get_viewport().set_input_as_handled()
-			elif event.button_index == JOY_BUTTON_B:
-				exit_arrest_mode()
-				get_viewport().set_input_as_handled()
+		elif event is InputEventJoypadButton and event.pressed \
+			and event.button_index == JOY_BUTTON_A:
+			confirm_arrest()
+			get_viewport().set_input_as_handled()
 		return
 
 	if event is InputEventMouseMotion:
@@ -1910,7 +1960,10 @@ func update_next_preview():
 func drop_clown():
 	if not preview_clown or not can_drop or game_over:
 		return
-	if arrest_mode:
+	# Held while an arrest is inbound: the clown that filled the meter is
+	# still falling, and letting another one in would change the pile the
+	# player is about to choose from.
+	if arrest_mode or arrest_incoming:
 		return
 
 	can_drop = false

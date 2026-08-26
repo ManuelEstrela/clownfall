@@ -27,8 +27,15 @@ var best_score: int = 0
 var total_runs: int = 0
 var total_clowns_dropped: int = 0
 var highest_tier_created: int = 0  # 0-10 (Tessa to Kirk)
-var total_currency_earned: int = 0
+# Lifetime playtime, in seconds. Only the COMPLETED sessions are stored —
+# the one currently running is added on top by get_time_played_seconds()
+# below. Keeping them apart means the running session can be folded in
+# repeatedly without ever double-counting.
 var time_played_seconds: float = 0.0
+# When this session started, on the monotonic clock. Time.get_ticks_msec()
+# is used rather than wall time so changing the system clock, or crossing a
+# daylight-saving boundary, can't corrupt the total.
+var _session_start_msec: int = 0
 
 # ====== THEMES & STARS ======
 # Stars are NOT stored as an earned total — they're derived from the
@@ -57,10 +64,21 @@ signal settings_changed
 signal audio_changed
 signal visual_changed
 
+# Without this, a session ends without ever being written and the whole
+# playtime is lost unless the player happened to open the statistics tab.
+# NOTIFICATION_WM_CLOSE_REQUEST covers the window's X; NOTIFICATION_PREDELETE
+# covers the autoload being torn down on a normal quit.
+func _notification(what):
+	if what == NOTIFICATION_WM_CLOSE_REQUEST or what == NOTIFICATION_PREDELETE:
+		commit_time_played()
+
 func _ready():
 	setup_custom_cursor()
 	load_settings()
 	apply_all_settings()
+	# load_settings() has just restored the stored total, so the session
+	# clock starts from here.
+	_session_start_msec = Time.get_ticks_msec()
 
 
 func setup_custom_cursor():
@@ -274,12 +292,44 @@ func update_highest_tier(tier: int):
 		highest_tier_created = tier
 		save_settings()
 
-func add_currency(amount: int):
-	total_currency_earned += amount
-	save_settings()
+# Currency earned == every star the collection has ever awarded.
+#
+# This is DERIVED from the collection counters rather than accumulated into
+# total_currency_earned, for the same reason get_total_stars_earned() is:
+# an accumulator is a second source of truth that can drift from what the
+# collection screen shows, and nothing ever incremented this one anyway.
+func get_total_currency_earned() -> int:
+	return get_total_stars_earned()
+
+# Kept so any existing caller still compiles. The figure is derived now, so
+# this no longer needs to do anything.
+func add_currency(_amount: int):
+	pass
 
 func add_time_played(seconds: float):
 	time_played_seconds += seconds
+	save_settings()
+
+# Seconds elapsed in the session currently running.
+func get_session_seconds() -> float:
+	return float(Time.get_ticks_msec() - _session_start_msec) / 1000.0
+
+# Lifetime total, including the session in progress. This is what the
+# statistics screen should read — time_played_seconds on its own is always
+# one session behind.
+func get_time_played_seconds() -> float:
+	return time_played_seconds + get_session_seconds()
+
+# Folds the running session into the stored total and restarts the session
+# clock. Called when the settings screen opens, so the number on display is
+# current, and on quit so the session isn't lost.
+func commit_time_played():
+	var elapsed = get_session_seconds()
+	if elapsed <= 0.0:
+		return
+	time_played_seconds += elapsed
+	_session_start_msec = Time.get_ticks_msec()
+	save_settings()
 	save_settings()
 
 # ── Per-clown merge tracking ───────────────────────────────────
@@ -411,7 +461,6 @@ func save_settings():
 		"total_runs": total_runs,
 		"total_clowns_dropped": total_clowns_dropped,
 		"highest_tier_created": highest_tier_created,
-		"total_currency_earned": total_currency_earned,
 		"time_played_seconds": time_played_seconds,
 		"merges_per_clown": merges_per_clown,
 		"drops_per_clown": drops_per_clown,
@@ -464,7 +513,6 @@ func load_settings():
 		total_runs = save_data.get("total_runs", 0)
 		total_clowns_dropped = save_data.get("total_clowns_dropped", 0)
 		highest_tier_created = save_data.get("highest_tier_created", 0)
-		total_currency_earned = save_data.get("total_currency_earned", 0)
 		time_played_seconds = save_data.get("time_played_seconds", 0.0)
 		merges_per_clown = save_data.get("merges_per_clown", [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
 		drops_per_clown = save_data.get("drops_per_clown", [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
@@ -511,6 +559,15 @@ func get_fps_cap_name() -> String:
 	return str(fps_cap)
 
 func format_time_played() -> String:
-	var hours = int(time_played_seconds / 3600)
-	var minutes = int((time_played_seconds - hours * 3600) / 60)
-	return str(hours) + "h " + str(minutes) + "m"
+	# Reads the live total, not the stored field — otherwise the current
+	# session never shows and a first-time player always sees "0h 0m".
+	var total = get_time_played_seconds()
+	var hours = int(total / 3600.0)
+	var minutes = int((total - hours * 3600) / 60.0)
+	# Under an hour, minutes alone reads better than "0h 7m"; under a
+	# minute, seconds, so a fresh install doesn't look broken.
+	if hours > 0:
+		return "%dh %dm" % [hours, minutes]
+	if minutes > 0:
+		return "%dm" % minutes
+	return "%ds" % int(total)

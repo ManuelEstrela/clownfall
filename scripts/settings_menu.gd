@@ -832,6 +832,11 @@ func setup_statistics_panel():
 	panel_grid["statistics"] = []
 
 func update_statistics_display():
+	# Fold the running session into the stored total before reading it, so
+	# the playtime shown is current rather than stale from last launch.
+	if settings.has_method("commit_time_played"):
+		settings.commit_time_played()
+
 	var clown_names = ["Tessa","Twinkles","Reina","Osvaldo","Hazel",
 					   "Mumbles","Sneaky","Wendy","Chatty","Cups","Kirk"]
 	var tier_text = "None"
@@ -841,7 +846,7 @@ func update_statistics_display():
 	_set_stat("TotalRuns",     str(settings.total_runs))
 	_set_stat("ClownsDropped", str(settings.total_clowns_dropped))
 	_set_stat("HighestTier",   tier_text)
-	_set_stat("Currency",      str(settings.total_currency_earned))
+	_set_stat("Currency",      str(settings.get_total_currency_earned()))
 	_set_stat("TimePlayed",    settings.format_time_played())
 
 func _set_stat(stat_name: String, value: String):
