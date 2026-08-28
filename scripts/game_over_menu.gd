@@ -175,6 +175,9 @@ func show_results(results: Dictionary):
 	if is_showing:
 		return
 	is_showing = true
+	# Belt and braces — trigger_game_over already does this, but the panel
+	# owns its own buttons and shouldn't depend on the caller for it.
+	Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
 
 	var score: int = results.get("score", 0)
 	var best: int = results.get("best", 0)
@@ -254,6 +257,8 @@ func _on_mainmenu_pressed():
 	if _navigating_away:
 		return
 	_navigating_away = true
+	# The main menu is mouse-driven, so leave the pointer on.
+	Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
 	if click_sound:
 		click_sound.play()
 	await get_tree().create_timer(0.1).timeout

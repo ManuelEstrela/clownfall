@@ -92,7 +92,11 @@ const CLOWN_NAMES = ["Tessa", "Twinkles", "Reina", "Osvaldo", "Hazel",
 const CARD_ASSET_PATHS = {
 	0: "res://assets/images/collection/tessa_card.png",
 	1: "res://assets/images/collection/twinkles_card.png",
+	2: "res://assets/images/collection/reina_card.png",
+	3: "res://assets/images/collection/osvaldo_card.png",
 	4: "res://assets/images/collection/hazel_card.png",
+	5: "res://assets/images/collection/mumbles_card.png",
+	7: "res://assets/images/collection/wendy_card.png",
 }
 const FALLBACK_CARD_ASSET := "res://assets/images/collection/hazel_card.png"
 
@@ -127,6 +131,22 @@ var _momentum_active: bool = false
 # stray _process/tween callback firing during scene-change teardown) can't run
 # against nodes that are already being freed.
 var _navigating_away: bool = false
+
+# ── Controller navigation ─────────────────────────────────────────────
+# The cards can't be handed to MenuController: the top row lives inside a
+# drag-scrolled ScrollContainer, so this screen tracks its own selection
+# across the two rows.
+var top_cards: Array = []       # TextureRect, one per top-row clown
+var bottom_cards: Array = []    # TextureButton, one per bottom-row clown
+var using_controller: bool = false
+var nav_row: int = 0            # 0 = top row, 1 = bottom row
+var nav_col: int = 0
+# Remembered so coming back UP lands where you left, rather than snapping
+# to whichever card happens to line up by proportion.
+var _last_top_col: int = 0
+var nav_cooldown: float = 0.0
+const NAV_COOLDOWN_TIME := 0.20
+const STICK_THRESHOLD := 0.55
 const MOMENTUM_FRICTION := 4.0      # higher = stops sooner
 const MOMENTUM_MIN_VELOCITY := 40.0 # below this, momentum just stops
 const MOMENTUM_MAX_VELOCITY := 4000.0  # clamp so a huge flick doesn't fly off screen
@@ -173,10 +193,21 @@ func _input(event):
 		and event.keycode == KEY_ESCAPE:
 		back = true
 	if back:
-		get_viewport().set_input_as_handled()
+		var vp = get_viewport()
+		if vp:
+			vp.set_input_as_handled()
 		_on_back_pressed()
+		return
+
+	_handle_controller_input(event)
 
 func _process(delta: float):
+	# Ticked before the momentum guard below — that guard returns early
+	# whenever the scroll is at rest, which is most of the time, and the
+	# navigation cooldown would never tick down if it sat after it.
+	if nav_cooldown > 0.0:
+		nav_cooldown -= delta
+
 	if _navigating_away or not _momentum_active:
 		return
 	if not is_instance_valid(scroll_container):
@@ -285,6 +316,7 @@ func setup_top_row():
 		wrapper.add_child(card)
 
 		top_row_box.add_child(wrapper)
+		top_cards.append(card)
 
 	var end_spacer = Control.new()
 	end_spacer.custom_minimum_size = Vector2(TOP_ROW_END_PADDING, 1)
@@ -376,7 +408,10 @@ func _find_card_at(local_pos: Vector2) -> TextureRect:
 					return child
 	return null
 
-func _set_card_hover(card: TextureRect, hovering: bool):
+# Takes Control, not TextureRect: the top row's cards are TextureRects but
+# the bottom row's are TextureButtons, and controller navigation drives
+# both through here. The narrower type would throw on a bottom-row card.
+func _set_card_hover(card: Control, hovering: bool):
 	if not is_instance_valid(card):
 		return
 	if hovering:
@@ -479,6 +514,7 @@ func setup_bottom_row():
 		wrapper.add_child(card)
 
 		bottom_row_box.add_child(wrapper)
+		bottom_cards.append(card)
 
 func _build_bottom_card(clown_index: int, width: float, height: float) -> TextureButton:
 	var card_btn = TextureButton.new()
@@ -670,3 +706,179 @@ func _on_back_pressed():
 	_momentum_active = false
 	_dragging = false
 	get_tree().change_scene_to_file("res://scenes/main_menu.tscn")
+
+# ══════════════════════════════════════════════════════════════════════
+#  CONTROLLER NAVIGATION
+#
+#  Left stick or d-pad walks the cards, starting top-left. Cross opens the
+#  lore screen for the highlighted card; Circle goes back to the main menu
+#  (handled by the ui-cancel branch in _input).
+#
+#  Selection reuses _set_card_hover, so a controller-highlighted card looks
+#  exactly like a moused-over one and plays the same sound.
+#
+#  project.godot binds only KEYS to ui-up / ui-down / move_left /
+#  move_right, so the stick and d-pad are read directly — same approach as
+#  the menus.
+# ══════════════════════════════════════════════════════════════════════
+
+func _stick(event, axis: int, positive: bool) -> bool:
+	if not (event is InputEventJoypadMotion) or event.axis != axis:
+		return false
+	return event.axis_value > STICK_THRESHOLD if positive \
+		else event.axis_value < -STICK_THRESHOLD
+
+func _dpad(event, button: int) -> bool:
+	return event is InputEventJoypadButton and event.pressed \
+		and event.button_index == button
+
+func _nav_left(event) -> bool:
+	return event.is_action_pressed("move_left") or _dpad(event, JOY_BUTTON_DPAD_LEFT) \
+		or _stick(event, JOY_AXIS_LEFT_X, false)
+
+func _nav_right(event) -> bool:
+	return event.is_action_pressed("move_right") or _dpad(event, JOY_BUTTON_DPAD_RIGHT) \
+		or _stick(event, JOY_AXIS_LEFT_X, true)
+
+func _nav_up(event) -> bool:
+	return event.is_action_pressed("ui-up") or _dpad(event, JOY_BUTTON_DPAD_UP) \
+		or _stick(event, JOY_AXIS_LEFT_Y, false)
+
+func _nav_down(event) -> bool:
+	return event.is_action_pressed("ui-down") or _dpad(event, JOY_BUTTON_DPAD_DOWN) \
+		or _stick(event, JOY_AXIS_LEFT_Y, true)
+
+# JOY_BUTTON_A is the bottom face button — Cross on PlayStation, A on Xbox.
+func _nav_confirm(event) -> bool:
+	return event.is_action_pressed("ui-confirm") or _dpad(event, JOY_BUTTON_A)
+
+func _handle_controller_input(event):
+	# Mouse takes over again the moment it actually moves.
+	if event is InputEventMouseMotion or event is InputEventMouseButton:
+		if using_controller:
+			using_controller = false
+			_clear_nav_highlight()
+		return
+
+	if not (event is InputEventJoypadButton or event is InputEventJoypadMotion):
+		return
+
+	# Resting sticks emit motion events continuously with tiny values.
+	# Without this, drift alone would flip the screen into controller mode.
+	if event is InputEventJoypadMotion and abs(event.axis_value) < STICK_THRESHOLD:
+		return
+
+	var direction := ""
+	if _nav_left(event):
+		direction = "left"
+	elif _nav_right(event):
+		direction = "right"
+	elif _nav_up(event):
+		direction = "up"
+	elif _nav_down(event):
+		direction = "down"
+
+	# The first controller input only takes over and highlights the starting
+	# card, so the player doesn't lose that press to the mode switch.
+	if not using_controller:
+		if direction == "" and not _nav_confirm(event):
+			return
+		using_controller = true
+		nav_row = 0
+		nav_col = 0
+		_apply_nav_selection()
+		return
+
+	if _nav_confirm(event):
+		var clown_index = _selected_clown_index()
+		if clown_index >= 0:
+			_on_card_clicked(clown_index)
+		return
+
+	if direction == "" or nav_cooldown > 0.0:
+		return
+
+	_move_nav(direction)
+	nav_cooldown = NAV_COOLDOWN_TIME
+
+func _move_nav(direction: String):
+	match direction:
+		"left":
+			nav_col = maxi(0, nav_col - 1)
+		"right":
+			nav_col = mini(_row_count(nav_row) - 1, nav_col + 1)
+		"down":
+			if nav_row == 0:
+				_last_top_col = nav_col
+				nav_row = 1
+				# The bottom row has far fewer cards, so map across by
+				# proportion rather than by raw index.
+				nav_col = _proportional_col(nav_col, TOP_ROW_COUNT, BOTTOM_ROW_COUNT)
+		"up":
+			if nav_row == 1:
+				nav_row = 0
+				nav_col = clampi(_last_top_col, 0, TOP_ROW_COUNT - 1)
+	_apply_nav_selection()
+
+func _proportional_col(col: int, from_count: int, to_count: int) -> int:
+	if from_count <= 1:
+		return 0
+	var ratio = float(col) / float(from_count - 1)
+	return clampi(int(round(ratio * (to_count - 1))), 0, to_count - 1)
+
+func _row_count(row: int) -> int:
+	return TOP_ROW_COUNT if row == 0 else BOTTOM_ROW_COUNT
+
+func _selected_card():
+	if nav_row == 0:
+		if nav_col < top_cards.size():
+			return top_cards[nav_col]
+	elif nav_col < bottom_cards.size():
+		return bottom_cards[nav_col]
+	return null
+
+func _selected_clown_index() -> int:
+	if nav_row == 0:
+		return nav_col
+	return TOP_ROW_COUNT + nav_col
+
+func _clear_nav_highlight():
+	for card in top_cards + bottom_cards:
+		if is_instance_valid(card):
+			_set_card_hover(card, false)
+
+func _apply_nav_selection():
+	_clear_nav_highlight()
+	var card = _selected_card()
+	if card:
+		_set_card_hover(card, true)
+	if nav_row == 0:
+		_scroll_to_top_card(nav_col)
+
+# Brings the highlighted top-row card into view.
+#
+# The x position is computed from the layout constants rather than read off
+# the node: HBoxContainer child positions aren't valid until it has laid
+# out, which hasn't necessarily happened on the first controller press.
+func _scroll_to_top_card(col: int):
+	if not is_instance_valid(scroll_container):
+		return
+
+	# Any in-flight drag momentum would immediately fight the scroll being
+	# set here, so stop it first.
+	_momentum_active = false
+	_velocity = 0.0
+	_dragging = false
+
+	var card_x = TOP_ROW_START_MARGIN + col * (CARD_W + CARD_SPACING)
+	var target = card_x - (scroll_container.size.x - CARD_W) / 2.0
+
+	var max_scroll := 0
+	var h_bar = scroll_container.get_h_scroll_bar()
+	if h_bar:
+		max_scroll = int(maxf(0.0, h_bar.max_value - scroll_container.size.x))
+
+	var tween = create_tween()
+	tween.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	tween.tween_property(scroll_container, "scroll_horizontal",
+		clampi(int(target), 0, max_scroll), 0.2)

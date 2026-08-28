@@ -319,6 +319,12 @@ signal clown_arrested(clown_type: int)
 func _ready():
 	randomize()
 
+	# The vertical drop guide already shows where the clown lands, so the
+	# pointer is redundant during play and just clutters the container. It
+	# comes back for the arrest, the pause menu and the game over panel,
+	# each of which restores it themselves.
+	Input.set_mouse_mode(Input.MOUSE_MODE_HIDDEN)
+
 	if debug_hitboxes:
 		print("🔍 DEBUG MODE: Hitbox visualization ENABLED")
 		get_tree().debug_collisions_hint = true
@@ -1058,6 +1064,11 @@ func exit_arrest_mode():
 
 	if jail_dim_overlay:
 		jail_dim_overlay.visible = false
+	# Selection is over — back to a clean board. The shape is reset too, so
+	# the hand can't persist into the menus if the arrest ended while a
+	# clown happened to be under the cursor.
+	Input.set_default_cursor_shape(Input.CURSOR_ARROW)
+	Input.set_mouse_mode(Input.MOUSE_MODE_HIDDEN)
 	update_jail_ui()
 
 # Lets a controller drive the pointer during an arrest. Warping the real
@@ -1093,23 +1104,43 @@ func update_arrest_hover():
 		if sprite:
 			# Scale the SPRITE, never the RigidBody2D — scaling the body
 			# doesn't scale its collision shape and desyncs the physics.
-			found.set_meta("arrest_base_scale", sprite.scale)
+			var base = _true_sprite_scale(found)
 			var tween = create_tween()
 			tween.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-			tween.tween_property(sprite, "scale", sprite.scale * arrest_hover_scale, 0.15)
+			tween.tween_property(sprite, "scale", base * arrest_hover_scale, 0.15)
 		found.modulate = Color(1.35, 1.18, 0.6)
+		# Clowns are RigidBody2D, so mouse_default_cursor_shape — the
+		# Control property SettingsManager.set_hover_cursor() relies on —
+		# does nothing here. The shape has to be set globally instead. The
+		# hover artwork is already registered against CURSOR_POINTING_HAND,
+		# so switching shape is all that's needed.
+		Input.set_default_cursor_shape(Input.CURSOR_POINTING_HAND)
 
 func clear_hover():
 	if is_instance_valid(hovered_clown):
 		var sprite = hovered_clown.get_node_or_null("Sprite")
-		if sprite and hovered_clown.has_meta("arrest_base_scale"):
-			var base = hovered_clown.get_meta("arrest_base_scale")
+		if sprite:
 			var tween = create_tween()
 			tween.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
-			tween.tween_property(sprite, "scale", base, 0.12)
-			hovered_clown.remove_meta("arrest_base_scale")
+			tween.tween_property(sprite, "scale", _true_sprite_scale(hovered_clown), 0.12)
 		hovered_clown.modulate = Color.WHITE
 	hovered_clown = null
+	Input.set_default_cursor_shape(Input.CURSOR_ARROW)
+
+# The clown's resting sprite scale, recomputed from its own data exactly as
+# ClownBall.setup() does.
+#
+# This used to sample sprite.scale live and stash it in meta. That is what
+# made clowns grow: sweep the cursor on and off a clown quickly and the
+# sample lands MID-TWEEN, so a scale that was still shrinking back got
+# recorded as the new "base" and the next hover grew 1.28x from there.
+# Every pass compounded. Deriving the value can't drift, no matter what a
+# tween happens to be doing when the cursor arrives.
+func _true_sprite_scale(clown) -> Vector2:
+	var sprite = clown.get_node_or_null("Sprite")
+	if sprite == null or sprite.texture == null:
+		return Vector2.ONE
+	return Vector2.ONE * (clown.clown_size / float(sprite.texture.get_width()))
 
 func clown_under_point(point: Vector2):
 	var best = null
@@ -2144,6 +2175,8 @@ func trigger_game_over():
 
 	game_over = true
 	can_drop = false
+	# The panel that follows has buttons, so the pointer has to come back.
+	Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
 
 	if game_over_sound:
 		game_over_sound.play()

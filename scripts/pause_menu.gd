@@ -132,6 +132,8 @@ func _input(event):
 
 func pause_game():
 	is_paused = true
+	# Gameplay hides the pointer; the menu needs it back for its buttons.
+	Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
 	visible = true
 	get_tree().paused = true
 	if menu_controller:
@@ -141,10 +143,27 @@ func pause_game():
 
 func resume_game():
 	is_paused = false
+	# Normally gameplay hides the pointer — but an arrest that was already
+	# under way when the player paused is still waiting for them to click a
+	# clown, and hiding it unconditionally left them unable to finish it.
+	Input.set_mouse_mode(_cursor_mode_for_gameplay())
 	visible = false
 	get_tree().paused = false
 	if hide_esc_sound:
 		hide_esc_sound.play()
+
+# VISIBLE only while an arrest selection is open, HIDDEN otherwise.
+#
+# The manager is found by class rather than by node path or group, so this
+# works for both GameManager (classic) and ChaoticManager, which extends it
+# and therefore also passes the check.
+func _cursor_mode_for_gameplay() -> int:
+	# The world scene's ROOT carries the GameManager script — it isn't a
+	# child of anything — so this checks current_scene directly.
+	var root = get_tree().current_scene
+	if root and root is GameManager and root.arrest_mode:
+		return Input.MOUSE_MODE_VISIBLE
+	return Input.MOUSE_MODE_HIDDEN
 
 func _on_resume_pressed():
 	resume_game()

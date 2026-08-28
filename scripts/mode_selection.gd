@@ -348,7 +348,17 @@ func _input(event):
 	if not (event is InputEventJoypadButton or event is InputEventJoypadMotion):
 		return
 
-	# First controller input — activate controller mode, starting on Classic
+	# Ignore stick noise.
+	#
+	# A resting analogue stick emits InputEventJoypadMotion continuously with
+	# tiny nonzero values. Without this filter every one of those counted as
+	# "the player used the controller", so the cursor was hidden by drift,
+	# shown again by mouse motion, hidden by the next drift — which is the
+	# flicker, and why it vanished the moment the mouse stopped moving.
+	if event is InputEventJoypadMotion and abs(event.axis_value) < STICK_THRESHOLD:
+		return
+
+	# First real controller input — activate controller mode, on Classic
 	if active_controller_area == -1:
 		active_controller_area = 0
 		select_mode("classic")
@@ -373,6 +383,8 @@ func _input(event):
 		elif _pressed_down(event):
 			# Move focus to start button
 			active_controller_area = 1
+			if button_hover_sound:
+				button_hover_sound.play()
 			animate_button_hover(start_button, true)
 			nav_cooldown = NAV_COOLDOWN_TIME
 			get_viewport().set_input_as_handled()
@@ -381,6 +393,8 @@ func _input(event):
 			# First confirm picks the mode and moves to start
 			if selected_mode != "":
 				active_controller_area = 1
+				if button_hover_sound:
+					button_hover_sound.play()
 				animate_button_hover(start_button, true)
 			get_viewport().set_input_as_handled()
 
@@ -388,6 +402,8 @@ func _input(event):
 		# Start button focused
 		if _pressed_up(event):
 			active_controller_area = 0
+			if button_hover_sound:
+				button_hover_sound.play()
 			animate_button_hover(start_button, false)
 			# selected_mode is never cleared on the way down, so going back
 			# up simply lands on whichever card was picked. Re-asserting it
@@ -447,6 +463,17 @@ func _controller_deselect_modes():
 	animate_selection(chaos_image, chaos_title, false)
 
 func select_mode(mode: String):
+	# Every hover sound in this file sits inside a mouse_entered handler, so
+	# controller navigation was silent.
+	#
+	# Two gates. Only when the selection actually CHANGES, so returning from
+	# the Start button to the mode already picked doesn't retrigger it. And
+	# only in controller mode (-1 means mouse), because the mouse path
+	# already plays its own hover sound on mouse_entered and would otherwise
+	# stack two sounds on one click.
+	if mode != selected_mode and active_controller_area != -1 and button_hover_sound:
+		button_hover_sound.play()
+
 	selected_mode = mode
 	if mode == "classic":
 		animate_selection(classic_image, classic_title, true)
