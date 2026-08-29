@@ -232,6 +232,12 @@ var click_sound: AudioStreamPlayer = null
 var game_over_sound: AudioStreamPlayer = null
 var pop_sounds: Array[AudioStreamPlayer] = []
 
+# Background music. One player used by BOTH modes — chaotic_manager.gd
+# calls super._ready(), so it inherits this. Swap BGM_CLASSIC for a chaos
+# track later by overriding bgm_track_path before setup_audio runs.
+var bgm: AudioStreamPlayer = null
+var bgm_track_path: String = "res://assets/sounds/classic_mode_bgm.mp3"
+
 # Jail sounds
 var jail_handcuff_sound: AudioStreamPlayer = null
 var jail_door_sound: AudioStreamPlayer = null
@@ -544,7 +550,36 @@ func setup_audio():
 		if whistle:
 			jail_whistle_sounds.append(whistle)
 
+	setup_music()
+
 	print("✅ Audio setup complete (including collision sounds)!")
+
+func setup_music():
+	if not ResourceLoader.exists(bgm_track_path):
+		push_warning("Missing background music: " + bgm_track_path)
+		return
+
+	var track = load(bgm_track_path)
+	if track == null:
+		return
+
+	# The .import has loop=false, so looping is set here — same as the main
+	# menu does with landing_bgm_2. Without it the track plays once and the
+	# rest of the run is silent.
+	track.loop = true
+
+	bgm = AudioStreamPlayer.new()
+	bgm.stream = track
+	bgm.volume_db = 0
+	# "Music" is the bus the music slider drives, via
+	# SettingsManager.apply_audio_settings(). Putting it on SFX or Master
+	# would leave that slider with no effect on it.
+	bgm.bus = "Music"
+	# Keeps playing while the tree is paused, so the pause menu and the
+	# game over panel don't drop into silence.
+	bgm.process_mode = Node.PROCESS_MODE_ALWAYS
+	add_child(bgm)
+	bgm.play()
 
 func _make_sound(path: String, volume_db: float = 0.0) -> AudioStreamPlayer:
 	if not ResourceLoader.exists(path):
